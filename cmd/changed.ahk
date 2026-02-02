@@ -1,16 +1,16 @@
 ;Created by rayshoo / github.com/rayshoo
-#NoEnv
-SendMode Input
-#InstallKeybdHook
+#Requires AutoHotkey v2.0
+SendMode("Input")
+InstallKeybdHook()
 
-Menu, Tray, Icon, main.cpl, 8
+TraySetIcon("main.cpl", 8)
 
-IniRead, SXCoordinate, Data\Save.ini, Coordinate, SXCoordinate, 0
-IniRead, SYCoordinate, Data\Save.ini, Coordinate, SYCoordinate, 0
-CoordMode, ToolTip, Screen
+SXCoordinate := IniRead("Data\Save.ini", "Coordinate", "SXCoordinate", "0")
+SYCoordinate := IniRead("Data\Save.ini", "Coordinate", "SYCoordinate", "0")
+CoordMode("ToolTip", "Screen")
 
 Colemak := true
-SetTimer, AlertColemak, -1
+SetTimer(AlertColemak, -1)
 
 ; ============================================================
 ; Hotkey Definitions
@@ -212,21 +212,23 @@ n::OnKey("k", "n", false)
 ; Win+Space toggle
 ; ============================================================
 
-#space::
-Suspend, Permit
-Suspend, Toggle
-if (Colemak) {
-	Colemak := false
-	SetTimer, AlertColemak, Off
-	SetTimer, DisappearColemak, Off
-	SetTimer, AlertQwerty, -1
-} else {
-	Colemak := true
-	SetTimer, AlertQwerty, Off
-	SetTimer, DisappearQwerty, Off
-	SetTimer, AlertColemak, -1
+#SuspendExempt
+#space:: {
+	global Colemak
+	Suspend(-1)
+	if (Colemak) {
+		Colemak := false
+		SetTimer(AlertColemak, 0)
+		SetTimer(DisappearColemak, 0)
+		SetTimer(AlertQwerty, -1)
+	} else {
+		Colemak := true
+		SetTimer(AlertQwerty, 0)
+		SetTimer(DisappearQwerty, 0)
+		SetTimer(AlertColemak, -1)
+	}
 }
-return
+#SuspendExempt false
 
 ; ============================================================
 ; CapsLock remapping
@@ -234,52 +236,54 @@ return
 
 CapsLock::BackSpace
 +CapsLock::CapsLock
-!CapsLock::
-	SetStoreCapsLockMode, Off
-	Send, !{CapsLock}
-return
-#CapsLock::
-	SetStoreCapsLockMode, Off
-	Send, #{CapsLock}
-return
-+!CapsLock::
-	SetStoreCapsLockMode, Off
-	Send, +!{CapsLock}
-return
-^+CapsLock::
-	SetStoreCapsLockMode, Off
-	Send, ^+{CapsLock}
-return
-^!CapsLock::
-	SetStoreCapsLockMode, Off
-	Send, ^!{CapsLock}
-return
-^!+CapsLock::
-	SetStoreCapsLockMode, Off
-	Send, ^!+{CapsLock}
-return
+!CapsLock:: {
+	SetStoreCapsLockMode("Off")
+	Send("!{CapsLock}")
+}
+#CapsLock:: {
+	SetStoreCapsLockMode("Off")
+	Send("#{CapsLock}")
+}
++!CapsLock:: {
+	SetStoreCapsLockMode("Off")
+	Send("+!{CapsLock}")
+}
+^+CapsLock:: {
+	SetStoreCapsLockMode("Off")
+	Send("^+{CapsLock}")
+}
+^!CapsLock:: {
+	SetStoreCapsLockMode("Off")
+	Send("^!{CapsLock}")
+}
+^!+CapsLock:: {
+	SetStoreCapsLockMode("Off")
+	Send("^!+{CapsLock}")
+}
 
 ; ============================================================
-; Tooltip Labels
+; Tooltip Functions
 ; ============================================================
 
-AlertColemak:
-	ToolTip, colemak, %SXCoordinate%, %SYCoordinate%, 1
-	SetTimer, DisappearColemak, -3000
-return
+AlertColemak() {
+	global SXCoordinate, SYCoordinate
+	ToolTip("colemak", SXCoordinate, SYCoordinate, 1)
+	SetTimer(DisappearColemak, -3000)
+}
 
-DisappearColemak:
-	ToolTip, , , , 1
-return
+DisappearColemak() {
+	ToolTip(, , , 1)
+}
 
-AlertQwerty:
-	ToolTip, qwerty, %SXCoordinate%, %SYCoordinate%, 1
-	SetTimer, DisappearQwerty, -3000
-return
+AlertQwerty() {
+	global SXCoordinate, SYCoordinate
+	ToolTip("qwerty", SXCoordinate, SYCoordinate, 1)
+	SetTimer(DisappearQwerty, -3000)
+}
 
-DisappearQwerty:
-	ToolTip, , , , 1
-return
+DisappearQwerty() {
+	ToolTip(, , , 1)
+}
 
 ; ============================================================
 ; Helper Functions
@@ -288,90 +292,90 @@ return
 OnKey(colemakKey, koreanKey, isShifted) {
 	ret := IME_CHECK("A")
 	if (ret = 0) {
-		Suspend, On
-		GetKeyState, capsOn, CapsLock, T
+		Suspend(true)
+		capsOn := GetKeyState("CapsLock", "T")
 		if (isShifted) {
-			if (capsOn = "D")
-				Send % Format("{:L}", colemakKey)
+			if (capsOn)
+				Send(Format("{:L}", colemakKey))
 			else
-				Send % Format("{:U}", colemakKey)
+				Send(Format("{:U}", colemakKey))
 		} else {
-			if (capsOn = "D")
-				Send % Format("{:U}", colemakKey)
+			if (capsOn)
+				Send(Format("{:U}", colemakKey))
 			else
-				Send % Format("{:L}", colemakKey)
+				Send(Format("{:L}", colemakKey))
 		}
-		Suspend, Off
+		Suspend(false)
 	} else {
-		Suspend, On
-		GetKeyState, capsOn, CapsLock, T
+		Suspend(true)
+		capsOn := GetKeyState("CapsLock", "T")
 		if (isShifted) {
-			if (capsOn = "D") {
-				SetKeyDelay, -1
-				Send % "{Blind}+" . koreanKey
+			if (capsOn) {
+				SetKeyDelay(-1)
+				Send("{Blind}+" . koreanKey)
 			} else {
-				Send % "+" . koreanKey
+				Send("+" . koreanKey)
 			}
 		} else {
-			if (capsOn = "D") {
-				SetKeyDelay, -1
-				Send % "{Blind}" . koreanKey
+			if (capsOn) {
+				SetKeyDelay(-1)
+				Send("{Blind}" . koreanKey)
 			} else {
-				Send % koreanKey
+				Send(koreanKey)
 			}
 		}
-		Suspend, Off
+		Suspend(false)
 	}
 }
 
 OnModKey(mod, colemakKey) {
-	Suspend, On
-	Send % mod . colemakKey
-	Suspend, Off
+	Suspend(true)
+	Send(mod . colemakKey)
+	Suspend(false)
 }
 
 OnSC027Key(mod) {
-	Suspend, On
-	Send % mod . "{SC027}"
-	Suspend, Off
+	Suspend(true)
+	Send(mod . "{SC027}")
+	Suspend(false)
 }
 
 OnKeyWithSC(letterKey, koreanKey, isShifted) {
 	ret := IME_CHECK("A")
 	if (ret = 0) {
-		Suspend, On
-		GetKeyState, capsOn, CapsLock, T
+		Suspend(true)
+		capsOn := GetKeyState("CapsLock", "T")
 		if (isShifted) {
-			if (capsOn = "D")
-				Send % Format("{:L}", letterKey)
+			if (capsOn)
+				Send(Format("{:L}", letterKey))
 			else
-				Send % Format("{:U}", letterKey)
+				Send(Format("{:U}", letterKey))
 		} else {
-			if (capsOn = "D")
-				Send % Format("{:U}", letterKey)
+			if (capsOn)
+				Send(Format("{:U}", letterKey))
 			else
-				Send % Format("{:L}", letterKey)
+				Send(Format("{:L}", letterKey))
 		}
-		Suspend, Off
+		Suspend(false)
 	} else {
-		Suspend, On
-		GetKeyState, capsOn, CapsLock, T
+		Suspend(true)
+		capsOn := GetKeyState("CapsLock", "T")
 		if (isShifted) {
-			if (capsOn = "D") {
-				SetKeyDelay, -1
-				Send % "{Blind}+" . koreanKey
+			if (capsOn) {
+				SetKeyDelay(-1)
+				Send("{Blind}+" . koreanKey)
 			} else {
-				Send % "+" . koreanKey
+				Send("+" . koreanKey)
 			}
 		} else {
-			if (capsOn = "D") {
-				SetKeyDelay, -1
-				Send % "{Blind}" . koreanKey
+			if (capsOn) {
+				SetKeyDelay(-1)
+				Send("{Blind}" . koreanKey)
 			} else {
-				Send % koreanKey
+				Send(koreanKey)
 			}
 		}
-		Suspend, Off
+		Suspend(false)
 	}
 }
 
@@ -380,16 +384,16 @@ OnKeyWithSC(letterKey, koreanKey, isShifted) {
 ; ============================================================
 
 IME_CHECK(WinTitle) {
-	WinGet, hWnd, ID, %WinTitle%
+	hWnd := WinGetID(WinTitle)
 	return Send_ImeControl(ImmGetDefaultIMEWnd(hWnd), 0x001, "")
 }
 
 Send_ImeControl(DefaultIMEWnd, wParam, lParam) {
 	DetectSave := A_DetectHiddenWindows
-	DetectHiddenWindows, On
-	SendMessage, 0x283, %wParam%, %lParam%, , ahk_id %DefaultIMEWnd%
-	DetectHiddenWindows, %DetectSave%
-	return ErrorLevel
+	DetectHiddenWindows(true)
+	result := SendMessage(0x283, wParam, lParam, , "ahk_id " . DefaultIMEWnd)
+	DetectHiddenWindows(DetectSave)
+	return result
 }
 
 ImmGetDefaultIMEWnd(hWnd) {
