@@ -1,0 +1,65 @@
+cmake_minimum_required(VERSION 3.16)
+project(kolemak-ime C)
+
+set(CMAKE_C_STANDARD 11)
+
+# Source files
+set(SOURCES
+    src/globals.c
+    src/dll_main.c
+    src/text_service.c
+    src/key_handler.c
+    src/edit_session.c
+    src/hangul.c
+    src/keymap.c
+)
+
+# Build as a shared library (DLL)
+add_library(kolemak SHARED ${SOURCES})
+
+# Module definition file for DLL exports
+target_sources(kolemak PRIVATE src/kolemak.def)
+
+# Include directories
+target_include_directories(kolemak PRIVATE src)
+
+# Link libraries
+target_link_libraries(kolemak PRIVATE
+    ole32
+    oleaut32
+    uuid
+    advapi32
+    user32
+)
+
+# MSVC-specific settings
+if(MSVC)
+    target_compile_definitions(kolemak PRIVATE
+        UNICODE
+        _UNICODE
+        WIN32_LEAN_AND_MEAN
+    )
+    # Disable certain warnings for COM C code
+    target_compile_options(kolemak PRIVATE /W4)
+endif()
+
+# MinGW settings
+if(MINGW)
+    target_compile_definitions(kolemak PRIVATE
+        UNICODE
+        _UNICODE
+        WIN32_LEAN_AND_MEAN
+        COBJMACROS
+        INITGUID
+    )
+    target_compile_options(kolemak PRIVATE -Wall -Wextra)
+endif()
+
+# Output name: kolemak.dll
+set_target_properties(kolemak PROPERTIES
+    OUTPUT_NAME "kolemak"
+    PREFIX ""
+)
+
+# Install target
+install(TARGETS kolemak RUNTIME DESTINATION bin)
