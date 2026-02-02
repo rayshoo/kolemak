@@ -1,44 +1,15 @@
-# 윈도우용 콜맥(colemak) 한글 입력 프로그램
-## 라이센스(license)
-[GNU General Public License v3.0](https://ko.wikipedia.org/wiki/GNU_%EC%9D%BC%EB%B0%98_%EA%B3%B5%EC%A4%91_%EC%82%AC%EC%9A%A9_%ED%97%88%EA%B0%80%EC%84%9C)
+![Kolemak Banner](assets/logo.png)
 
-## 소개
-윈도우 운영체제에서 콜맥 자판을 두벌식 한글과 함께 간편히 사용할 수 있는 프로그램입니다.
-더불어 일반 쿼티 사용자가 본인의 컴퓨터를 쓰게 될 경우 바로 쿼티 자판으로 변경 또한 용이하도록 만들었습니다.<br>
+# Kolemak
 
-### 장점
-- 실행파일을 다운로드하여 단순히 실행하는 것만으로도 바로 콜맥 자판을 사용할 수 있을만큼 간편하면서도 강력합니다.<br>
-- 일반 쿼티 사용자가 본인의 컴퓨터를 쓰게 될 경우, 바로 쿼티 자판으로 변경 가능하기에 단일 사용자를 목표로 만들어진 윈도우 운영체제의 한계를 극복할 수 있습니다.
+A Colemak keyboard layout driver for Windows with native Korean (Dubeolsik) IME support. Switch between Colemak and QWERTY instantly with a single hotkey — no OS-level layout changes required.
 
-### 단점
-- 오토핫키의 한계로써, 낮은 단계에서 바로 입력을 넣는 것이 아니고 키 입력을 가로채서 바꿔 전달하는 것이기에 컴퓨터가 버벅이거나 연타를 할 경우 쿼티 자판의 키가 입력될 수 있습니다.(완벽한 입력기라고 할 수 없다.)
-- 일부 프로그램 혹은 일부 검색창에서 적용안될 수 있습니다. 이 경우 쿼티로 바꿔서 써야합니다.<kbd>window</kbd>+<kbd>space</kbd>
+Windows에서 두벌식 한글 입력을 지원하는 Colemak 자판 드라이버입니다. 별도의 OS 설정 변경 없이 단축키 하나로 Colemak과 QWERTY를 즉시 전환할 수 있습니다.
 
+## Documentation
 
-## 설명
-`키 입력을 가로채서 바꿔 전달해주는 것이기 때문에(키 매핑) windows 입력기가 Microsoft 한글 입력기 일경우에만 제대로 적용됩니다.`
+[English](./docs/en.md) | [한국어](./docs/ko.md)
 
-두벌식 한글 사용을 전제로 개발했기 때문에 두벌식에서만 사용 가능하며, 콜맥 자판과의 호환성을 살리기 위해서 ; 키와 ㅔ 키의 위치를 바꾼 것과 안바꾼 것 두 가지를 동시에 제공합니다.<br>
-### 두벌식 한글 변경점(변경 전 키 : 변경 후 키)
-<kbd>;</kbd> : <kbd>ㅔ</kbd><br>
-<kbd>ㅔ</kbd> : <kbd>;</kbd><br>
+## License
 
-
-## 사용법
-실행파일을 **관리자 권한으로 실행**하거나 윈도우 부팅시에 자동 실행되도록 **스케줄러에 등록(권장)** 합니다.
-
-<hr>
-
-### 스케줄러 등록
-1. windown 키 - '작업 스케줄러' 입력 - 작업 스케줄러 실행 - 작업 만들기<br>
-2. 일반 탭 - 이름 : colemak, 가장 높은 수준의 권한으로 실행 `체크`<br>
-3. 트리거 탭 - 새로 만들기 - 작업 시작 : 로그온할 때 - 확인
-4. 동작 탭 - 새로 만들기 - 동작 : 프로그램 시작 - 프로그램/스크립트 찾아보기  - 실행하고자 하는 실행파일(colemak.exe) 지정 - 확인 <br>
-5. 설정 탭 - 다음 시간 이상 작업이 실행되면 중지 `체크 해제`
-6. 확인 - 작업 스케줄러 창 닫기
-<hr>
-
-### 콜맥에서 쿼티로 전환(layout to qwerty)
-<kbd>window</kbd>+<kbd>space</kbd><br>
-![layout_state](https://public5516.s3.ap-northeast-2.amazonaws.com/colemak_korean.PNG)<br>
-화면 최상단 + 최좌측에서 레이아웃을 변경할때 3초간 현재 레이아웃의 상태를 확인할 수 있습니다.
+[GNU General Public License v3.0](./LICENSE)
