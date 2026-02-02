@@ -31,13 +31,13 @@ jobs:
     - name: Compile changed.ahk
       shell: pwsh
       run: |
-        & "$env:TEMP\ahk-v2\Compiler\Ahk2Exe.exe" /in cmd\changed.ahk /out dist\kolemak-changed.exe /icon assets\icon.ico /base "$env:TEMP\ahk-v2\AutoHotkey64.exe"
+        Start-Process -FilePath "$env:TEMP\ahk-v2\Compiler\Ahk2Exe.exe" -ArgumentList "/in","cmd\changed.ahk","/out","dist\kolemak-changed.exe","/icon","assets\icon.ico","/base","$env:TEMP\ahk-v2\AutoHotkey64.exe" -Wait -NoNewWindow
         if (!(Test-Path dist\kolemak-changed.exe)) { throw "Compilation failed for changed.ahk" }
 
     - name: Compile unchanged.ahk
       shell: pwsh
       run: |
-        & "$env:TEMP\ahk-v2\Compiler\Ahk2Exe.exe" /in cmd\unchanged.ahk /out dist\kolemak-unchanged.exe /icon assets\icon.ico /base "$env:TEMP\ahk-v2\AutoHotkey64.exe"
+        Start-Process -FilePath "$env:TEMP\ahk-v2\Compiler\Ahk2Exe.exe" -ArgumentList "/in","cmd\unchanged.ahk","/out","dist\kolemak-unchanged.exe","/icon","assets\icon.ico","/base","$env:TEMP\ahk-v2\AutoHotkey64.exe" -Wait -NoNewWindow
         if (!(Test-Path dist\kolemak-unchanged.exe)) { throw "Compilation failed for unchanged.ahk" }
 
     - name: Upload artifact
