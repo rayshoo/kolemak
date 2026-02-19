@@ -14,11 +14,22 @@ static HRESULT RequestEditSession(TextService *ts, ITfContext *ctx,
     HRESULT hr;
     HRESULT hrSession;
 
+    (void)type;
+
     hr = ctx->lpVtbl->RequestEditSession(
         ctx, ts->clientId,
         (ITfEditSession *)es,
-        TF_ES_ASYNCDONTCARE | TF_ES_READWRITE,
+        TF_ES_SYNC | TF_ES_READWRITE,
         &hrSession);
+
+    /* If sync not granted, fall back to async */
+    if (hr == TF_E_SYNCHRONOUS) {
+        hr = ctx->lpVtbl->RequestEditSession(
+            ctx, ts->clientId,
+            (ITfEditSession *)es,
+            TF_ES_ASYNC | TF_ES_READWRITE,
+            &hrSession);
+    }
 
     return SUCCEEDED(hr) ? hrSession : hr;
 }
@@ -26,19 +37,58 @@ static HRESULT RequestEditSession(TextService *ts, ITfContext *ctx,
 /* Check if a key should be eaten */
 static BOOL ShouldEatKey(TextService *ts, UINT vk, BOOL shift)
 {
-    /* Always eat letter keys */
+    /* CapsLock → Backspace: eat CapsLock when enabled */
+    if (ts->capsLockAsBackspace && vk == VK_CAPITAL)
+        return TRUE;
+
+    /* When a modifier (Ctrl/Alt/Win) is held, pass shortcuts through.
+     * In Colemak mode, eat keys that need VK remapping so we can
+     * remap them in OnKeyDown (e.g. physical K → Ctrl+E). */
+    {
+        BOOL ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+        BOOL alt  = (GetKeyState(VK_MENU) & 0x8000) != 0;
+        BOOL win  = ((GetKeyState(VK_LWIN) & 0x8000) |
+                     (GetKeyState(VK_RWIN) & 0x8000)) != 0;
+        if (ctrl || alt || win) {
+            if (ts->colemakMode) {
+                if (ts->colemakRemapVk == vk)
+                    return FALSE;  /* Our remapped key coming back */
+                if (keymap_get_colemak_vk(vk) != vk)
+                    return TRUE;   /* Needs VK remapping */
+            }
+            return FALSE;
+        }
+    }
+
+    /* QWERTY mode with no Korean: pass everything through */
+    if (!ts->colemakMode && !ts->koreanMode)
+        return FALSE;
+
+    /* Always eat letter keys (for Colemak remap or Korean input) */
     if (vk >= 'A' && vk <= 'Z')
         return TRUE;
 
-    /* Eat semicolon in English mode (Colemak maps ; -> O) */
-    if (!ts->koreanMode && vk == VK_OEM_1)
-        return TRUE;
+    /* Eat semicolon key: in English Colemak mode (maps ; -> O),
+     * or in Korean Colemak mode with semicolonSwap (maps ; -> ㅔ) */
+    if (vk == VK_OEM_1) {
+        if (ts->colemakMode && !ts->koreanMode)
+            return TRUE;
+        if (ts->koreanMode && ts->colemakMode && ts->semicolonSwap)
+            return TRUE;
+    }
 
     /* Eat backspace during active composition */
     if (vk == VK_BACK && ts->hangulCtx.state != HANGUL_STATE_EMPTY)
         return TRUE;
 
-    /* Eat Space/Enter/Escape to flush composition */
+    /* Eat modifier keys during active composition to prevent
+     * the browser/app from terminating composition on Shift press */
+    if (ts->hangulCtx.state != HANGUL_STATE_EMPTY) {
+        if (vk == VK_SHIFT || vk == VK_LSHIFT || vk == VK_RSHIFT)
+            return TRUE;
+    }
+
+    /* Eat Enter/Escape to flush composition */
     if (ts->hangulCtx.state != HANGUL_STATE_EMPTY) {
         if (vk == VK_RETURN || vk == VK_ESCAPE)
             return TRUE;
@@ -57,7 +107,7 @@ static HRESULT HandleKoreanKey(TextService *ts, ITfContext *ctx,
     EditSession *es = NULL;
     HRESULT hr;
 
-    jamo = keymap_get_jamo(vk, shift);
+    jamo = keymap_get_jamo(vk, shift, ts->colemakMode && ts->semicolonSwap);
 
     if (jamo.cho < 0 && jamo.jung < 0) {
         /* Not a jamo key. If composing, flush first then pass through. */
@@ -88,23 +138,32 @@ static HRESULT HandleKoreanKey(TextService *ts, ITfContext *ctx,
     return S_OK;
 }
 
-/* Process a key in English mode */
+/* Process a key in English mode - uses SendInput for correct ordering */
 static HRESULT HandleEnglishKey(TextService *ts, ITfContext *ctx,
                                  UINT vk, BOOL shift)
 {
     WCHAR ch;
-    EditSession *es = NULL;
-    HRESULT hr;
+    INPUT inputs[2] = {0};
+
+    (void)ts; (void)ctx;
+
+    /* CapsLock inverts case for letter keys */
+    if ((GetKeyState(VK_CAPITAL) & 1) && vk >= 'A' && vk <= 'Z')
+        shift = !shift;
 
     if (!keymap_get_colemak(vk, shift, &ch))
         return S_FALSE; /* Not a key we remap */
 
-    hr = EditSession_Create(ts, ctx, ES_INSERT_CHAR, &es);
-    if (FAILED(hr)) return hr;
-
-    es->data.ch = ch;
-    RequestEditSession(ts, ctx, ES_INSERT_CHAR, es);
-    es->lpVtbl->Release((ITfEditSession *)es);
+    /* Send Unicode character directly via SendInput.
+     * This arrives as VK_PACKET which ShouldEatKey doesn't eat,
+     * so no recursion. Ordering is guaranteed by SendInput. */
+    inputs[0].type = INPUT_KEYBOARD;
+    inputs[0].ki.wScan = ch;
+    inputs[0].ki.dwFlags = KEYEVENTF_UNICODE;
+    inputs[1].type = INPUT_KEYBOARD;
+    inputs[1].ki.wScan = ch;
+    inputs[1].ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
+    SendInput(2, inputs, sizeof(INPUT));
 
     return S_OK;
 }
@@ -136,7 +195,10 @@ static ULONG STDMETHODCALLTYPE KES_Release(ITfKeyEventSink *pThis)
 static HRESULT STDMETHODCALLTYPE KES_OnSetFocus(
     ITfKeyEventSink *pThis, BOOL fForeground)
 {
-    (void)pThis; (void)fForeground;
+    if (fForeground) {
+        TextService *ts = TS_FROM_KEY_EVENT_SINK(pThis);
+        Settings_ReloadPrefs(ts);
+    }
     return S_OK;
 }
 
@@ -173,6 +235,59 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
 
     (void)lParam;
     *pfEaten = FALSE;
+
+    /* CapsLock → Backspace handling.
+     * Windows toggles CapsLock state BEFORE TSF sees the key,
+     * so we undo the toggle via SetKeyboardState (direct state
+     * manipulation avoids synthetic key events that TSF intercepts). */
+    if (ts->capsLockAsBackspace && vk == VK_CAPITAL) {
+        if (shift) {
+            /* Shift+CapsLock: actual CapsLock toggle.
+             * Windows already toggled it, so just let it be. */
+        } else {
+            /* Undo the CapsLock toggle that Windows already applied */
+            {
+                BYTE ks[256];
+                GetKeyboardState(ks);
+                ks[VK_CAPITAL] ^= 1;
+                SetKeyboardState(ks);
+            }
+
+            if (ts->hangulCtx.state != HANGUL_STATE_EMPTY) {
+                /* CapsLock during composition: hangul backspace */
+                HangulResult result = hangul_ic_backspace(&ts->hangulCtx);
+                EditSession *es = NULL;
+
+                if (result.type == HANGUL_RESULT_COMPOSING) {
+                    hr = EditSession_Create(ts, pic, ES_HANDLE_RESULT, &es);
+                    if (SUCCEEDED(hr)) {
+                        es->data.hangulResult = result;
+                        RequestEditSession(ts, pic, ES_HANDLE_RESULT, es);
+                        es->lpVtbl->Release((ITfEditSession *)es);
+                    }
+                } else if (result.type == HANGUL_RESULT_COMMIT_FLUSH) {
+                    hr = EditSession_Create(ts, pic, ES_CANCEL_COMPOSITION, &es);
+                    if (SUCCEEDED(hr)) {
+                        RequestEditSession(ts, pic, ES_CANCEL_COMPOSITION, es);
+                        es->lpVtbl->Release((ITfEditSession *)es);
+                    }
+                }
+            } else {
+                /* CapsLock outside composition: send Backspace */
+                keybd_event(VK_BACK, 0, 0, 0);
+                keybd_event(VK_BACK, 0, KEYEVENTF_KEYUP, 0);
+            }
+        }
+        *pfEaten = TRUE;
+        return S_OK;
+    }
+
+    /* Shift keys eaten during composition: swallow silently.
+     * This prevents the browser from terminating composition on Shift press. */
+    if (vk == VK_SHIFT || vk == VK_LSHIFT || vk == VK_RSHIFT) {
+        *pfEaten = (ts->hangulCtx.state != HANGUL_STATE_EMPTY);
+        return S_OK;
+    }
 
     /* Handle backspace during composition */
     if (vk == VK_BACK && ts->hangulCtx.state != HANGUL_STATE_EMPTY) {
@@ -218,11 +333,60 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
         return S_OK;
     }
 
+    /* Modifier shortcuts: remap VK codes in Colemak mode,
+     * otherwise let shortcuts pass through unchanged. */
+    {
+        BOOL ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+        BOOL alt  = (GetKeyState(VK_MENU) & 0x8000) != 0;
+        BOOL win  = ((GetKeyState(VK_LWIN) & 0x8000) |
+                     (GetKeyState(VK_RWIN) & 0x8000)) != 0;
+        if (ctrl || alt || win) {
+            if (ts->colemakMode) {
+                if (ts->colemakRemapVk == vk) {
+                    /* Our remapped key coming back, pass through */
+                    ts->colemakRemapVk = 0;
+                    *pfEaten = FALSE;
+                    return S_OK;
+                }
+                {
+                    UINT remapped = keymap_get_colemak_vk(vk);
+                    if (remapped != vk) {
+                        INPUT inputs[2];
+                        memset(inputs, 0, sizeof(inputs));
+                        ts->colemakRemapVk = remapped;
+                        inputs[0].type = INPUT_KEYBOARD;
+                        inputs[0].ki.wVk = (WORD)remapped;
+                        inputs[0].ki.wScan =
+                            (WORD)MapVirtualKey(remapped, MAPVK_VK_TO_VSC);
+                        inputs[1].type = INPUT_KEYBOARD;
+                        inputs[1].ki.wVk = (WORD)remapped;
+                        inputs[1].ki.wScan =
+                            (WORD)MapVirtualKey(remapped, MAPVK_VK_TO_VSC);
+                        inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+                        SendInput(2, inputs, sizeof(INPUT));
+                        *pfEaten = TRUE;
+                        return S_OK;
+                    }
+                }
+            }
+            *pfEaten = FALSE;
+            return S_OK;
+        }
+    }
+
     /* Normal key processing */
     if (ts->koreanMode) {
         hr = HandleKoreanKey(ts, pic, vk, shift);
-    } else {
+        /* If Korean handler didn't consume the key (e.g. VK_P with
+         * semicolonSwap) and we're in Colemak mode, fall through to
+         * English handler for Colemak character remapping (e.g. P→;) */
+        if (hr == S_FALSE && ts->colemakMode)
+            hr = HandleEnglishKey(ts, pic, vk, shift);
+    } else if (ts->colemakMode) {
         hr = HandleEnglishKey(ts, pic, vk, shift);
+    } else {
+        /* QWERTY mode: pass through */
+        hr = S_FALSE;
     }
 
     *pfEaten = SUCCEEDED(hr) && hr != S_FALSE;
@@ -262,6 +426,32 @@ static HRESULT STDMETHODCALLTYPE KES_OnPreservedKey(
         }
 
         ts->koreanMode = !ts->koreanMode;
+        TextService_SetKeyboardOpen(ts, ts->koreanMode);
+        if (ts->langBarButton)
+            LangBarButton_UpdateState(ts->langBarButton);
+        *pfEaten = TRUE;
+        return S_OK;
+    }
+
+    if (IsEqualGUID(rguid, &GUID_KolemakPreservedKey_ColemakToggle)) {
+        /* Flush any ongoing composition before toggling */
+        if (ts->hangulCtx.state != HANGUL_STATE_EMPTY) {
+            HangulResult result = hangul_ic_flush(&ts->hangulCtx);
+            EditSession *es = NULL;
+            HRESULT hr;
+
+            hr = EditSession_Create(ts, pic, ES_HANDLE_RESULT, &es);
+            if (SUCCEEDED(hr)) {
+                es->data.hangulResult = result;
+                RequestEditSession(ts, pic, ES_HANDLE_RESULT, es);
+                es->lpVtbl->Release((ITfEditSession *)es);
+            }
+        }
+
+        ts->colemakMode = !ts->colemakMode;
+        KolemakTooltip_Show(ts->colemakMode ? L"Colemak" : L"QWERTY");
+        if (ts->langBarButton)
+            LangBarButton_UpdateState(ts->langBarButton);
         *pfEaten = TRUE;
         return S_OK;
     }

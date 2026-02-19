@@ -194,22 +194,20 @@ HRESULT KolemakIME_UnregisterServer(void)
 
 HRESULT KolemakIME_RegisterProfiles(void)
 {
-    ITfInputProcessorProfiles *pProfiles = NULL;
+    ITfInputProcessorProfileMgr *pProfileMgr = NULL;
     HRESULT hr;
     WCHAR szModule[MAX_PATH];
 
-    hr = CoCreateInstance(&CLSID_TF_InputProcessorProfiles, NULL,
-                          CLSCTX_INPROC_SERVER,
-                          &IID_ITfInputProcessorProfiles,
-                          (void **)&pProfiles);
-    if (FAILED(hr)) return hr;
-
     GetModuleFileNameW(g_hInst, szModule, MAX_PATH);
 
-    hr = pProfiles->lpVtbl->Register(pProfiles, &CLSID_KolemakTextService);
+    /* Use the newer ITfInputProcessorProfileMgr API (required for Win10/11) */
+    hr = CoCreateInstance(&CLSID_TF_InputProcessorProfiles, NULL,
+                          CLSCTX_INPROC_SERVER,
+                          &IID_ITfInputProcessorProfileMgr,
+                          (void **)&pProfileMgr);
     if (SUCCEEDED(hr)) {
-        hr = pProfiles->lpVtbl->AddLanguageProfile(
-            pProfiles,
+        hr = pProfileMgr->lpVtbl->RegisterProfile(
+            pProfileMgr,
             &CLSID_KolemakTextService,
             KOLEMAK_LANGID,
             &GUID_KolemakProfile,
@@ -217,11 +215,38 @@ HRESULT KolemakIME_RegisterProfiles(void)
             KOLEMAK_DESC_LEN,
             szModule,
             lstrlenW(szModule),
-            0   /* icon index */
+            0,      /* icon index */
+            NULL,   /* hklSubstitute */
+            0,      /* dwPreferredLayout */
+            TRUE,   /* bEnabledByDefault */
+            0       /* dwFlags */
         );
+        pProfileMgr->lpVtbl->Release(pProfileMgr);
+    } else {
+        /* Fallback to older API */
+        ITfInputProcessorProfiles *pProfiles = NULL;
+        hr = CoCreateInstance(&CLSID_TF_InputProcessorProfiles, NULL,
+                              CLSCTX_INPROC_SERVER,
+                              &IID_ITfInputProcessorProfiles,
+                              (void **)&pProfiles);
+        if (FAILED(hr)) return hr;
+
+        hr = pProfiles->lpVtbl->Register(pProfiles, &CLSID_KolemakTextService);
+        if (SUCCEEDED(hr)) {
+            hr = pProfiles->lpVtbl->AddLanguageProfile(
+                pProfiles,
+                &CLSID_KolemakTextService,
+                KOLEMAK_LANGID,
+                &GUID_KolemakProfile,
+                KOLEMAK_DESC,
+                KOLEMAK_DESC_LEN,
+                szModule,
+                lstrlenW(szModule),
+                0);
+        }
+        pProfiles->lpVtbl->Release(pProfiles);
     }
 
-    pProfiles->lpVtbl->Release(pProfiles);
     return hr;
 }
 
@@ -253,14 +278,49 @@ HRESULT KolemakIME_RegisterCategories(void)
     if (FAILED(hr)) return hr;
 
     /* Register as a TIP (Text Input Processor) */
-    hr = pCatMgr->lpVtbl->RegisterCategory(
+    pCatMgr->lpVtbl->RegisterCategory(
         pCatMgr,
         &CLSID_KolemakTextService,
         &GUID_TFCAT_TIP_KEYBOARD,
         &CLSID_KolemakTextService);
 
+    /* Required for Windows 8+ Store/UWP apps */
+    pCatMgr->lpVtbl->RegisterCategory(
+        pCatMgr,
+        &CLSID_KolemakTextService,
+        &GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT,
+        &CLSID_KolemakTextService);
+
+    /* Required for Windows 8+ system tray support */
+    pCatMgr->lpVtbl->RegisterCategory(
+        pCatMgr,
+        &CLSID_KolemakTextService,
+        &GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT,
+        &CLSID_KolemakTextService);
+
+    /* Required for secure desktop (UAC dialogs, lock screen) */
+    pCatMgr->lpVtbl->RegisterCategory(
+        pCatMgr,
+        &CLSID_KolemakTextService,
+        &GUID_TFCAT_TIPCAP_SECUREMODE,
+        &CLSID_KolemakTextService);
+
+    /* UI element support */
+    pCatMgr->lpVtbl->RegisterCategory(
+        pCatMgr,
+        &CLSID_KolemakTextService,
+        &GUID_TFCAT_TIPCAP_UIELEMENTENABLED,
+        &CLSID_KolemakTextService);
+
+    /* Input mode compartment support (enables 가/A indicator in taskbar) */
+    pCatMgr->lpVtbl->RegisterCategory(
+        pCatMgr,
+        &CLSID_KolemakTextService,
+        &GUID_TFCAT_TIPCAP_INPUTMODECOMPARTMENT,
+        &CLSID_KolemakTextService);
+
     pCatMgr->lpVtbl->Release(pCatMgr);
-    return hr;
+    return S_OK;
 }
 
 HRESULT KolemakIME_UnregisterCategories(void)
@@ -275,10 +335,23 @@ HRESULT KolemakIME_UnregisterCategories(void)
     if (FAILED(hr)) return hr;
 
     pCatMgr->lpVtbl->UnregisterCategory(
-        pCatMgr,
-        &CLSID_KolemakTextService,
-        &GUID_TFCAT_TIP_KEYBOARD,
-        &CLSID_KolemakTextService);
+        pCatMgr, &CLSID_KolemakTextService,
+        &GUID_TFCAT_TIP_KEYBOARD, &CLSID_KolemakTextService);
+    pCatMgr->lpVtbl->UnregisterCategory(
+        pCatMgr, &CLSID_KolemakTextService,
+        &GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT, &CLSID_KolemakTextService);
+    pCatMgr->lpVtbl->UnregisterCategory(
+        pCatMgr, &CLSID_KolemakTextService,
+        &GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT, &CLSID_KolemakTextService);
+    pCatMgr->lpVtbl->UnregisterCategory(
+        pCatMgr, &CLSID_KolemakTextService,
+        &GUID_TFCAT_TIPCAP_SECUREMODE, &CLSID_KolemakTextService);
+    pCatMgr->lpVtbl->UnregisterCategory(
+        pCatMgr, &CLSID_KolemakTextService,
+        &GUID_TFCAT_TIPCAP_UIELEMENTENABLED, &CLSID_KolemakTextService);
+    pCatMgr->lpVtbl->UnregisterCategory(
+        pCatMgr, &CLSID_KolemakTextService,
+        &GUID_TFCAT_TIPCAP_INPUTMODECOMPARTMENT, &CLSID_KolemakTextService);
 
     pCatMgr->lpVtbl->Release(pCatMgr);
     return S_OK;

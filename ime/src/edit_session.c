@@ -92,24 +92,49 @@ static HRESULT SetCompositionText(TextService *ts, TfEditCookie ec,
     if (FAILED(hr)) return hr;
 
     hr = pRange->lpVtbl->SetText(pRange, ec, 0, text, len);
-    if (SUCCEEDED(hr)) {
-        /* Collapse range to end so next input appends after */
-        pRange->lpVtbl->Collapse(pRange, ec, TF_ANCHOR_END);
-
-        /* Move selection to end of composition */
-        {
-            TF_SELECTION sel;
-            sel.range = pRange;
-            sel.style.ase = TF_AE_NONE;
-            sel.style.fInterimChar = FALSE;
-
-            /* Get context from composition range */
-            /* We have context from the edit session, but let's just set selection */
-        }
-    }
 
     pRange->lpVtbl->Release(pRange);
     return hr;
+}
+
+/* Set selection to cover the composition text with a block cursor (fInterimChar).
+ * This shows the Korean-style block cursor during active composition. */
+static void SetInterimSelection(TextService *ts, ITfContext *ctx,
+                                 TfEditCookie ec)
+{
+    ITfRange *pRange = NULL;
+
+    if (!ts->composition) return;
+
+    if (SUCCEEDED(ts->composition->lpVtbl->GetRange(ts->composition, &pRange))) {
+        TF_SELECTION sel;
+        sel.range = pRange;
+        sel.style.ase = TF_AE_NONE;
+        sel.style.fInterimChar = TRUE;
+        ctx->lpVtbl->SetSelection(ctx, ec, 1, &sel);
+        pRange->lpVtbl->Release(pRange);
+    }
+}
+
+/* Move selection to end of composition range.
+ * Called only before EndComposition in COMMIT paths, so that
+ * the next StartComposition finds the cursor at the right position. */
+static void SetSelectionToCompositionEnd(TextService *ts, ITfContext *ctx,
+                                          TfEditCookie ec)
+{
+    ITfRange *pRange = NULL;
+
+    if (!ts->composition) return;
+
+    if (SUCCEEDED(ts->composition->lpVtbl->GetRange(ts->composition, &pRange))) {
+        TF_SELECTION sel;
+        pRange->lpVtbl->Collapse(pRange, ec, TF_ANCHOR_END);
+        sel.range = pRange;
+        sel.style.ase = TF_AE_NONE;
+        sel.style.fInterimChar = FALSE;
+        ctx->lpVtbl->SetSelection(ctx, ec, 1, &sel);
+        pRange->lpVtbl->Release(pRange);
+    }
 }
 
 static HRESULT EndComposition(TextService *ts, TfEditCookie ec)
@@ -193,6 +218,9 @@ static HRESULT STDMETHODCALLTYPE ES_DoEditSession(
             }
             if (r->compose) {
                 hr = SetCompositionText(ts, ec, &r->compose, 1);
+                /* Show block cursor over the composing character */
+                if (SUCCEEDED(hr))
+                    SetInterimSelection(ts, es->context, ec);
             }
             break;
 
@@ -209,6 +237,8 @@ static HRESULT STDMETHODCALLTYPE ES_DoEditSession(
                 /* Set the committed text on the current composition range */
                 if (commitLen > 0)
                     SetCompositionText(ts, ec, commitBuf, commitLen);
+                /* Move selection to after committed text before ending */
+                SetSelectionToCompositionEnd(ts, es->context, ec);
                 EndComposition(ts, ec);
             } else if (commitLen > 0) {
                 InsertText(es->context, ec, commitBuf, commitLen);
@@ -219,6 +249,7 @@ static HRESULT STDMETHODCALLTYPE ES_DoEditSession(
                 hr = StartComposition(ts, es->context, ec);
                 if (SUCCEEDED(hr)) {
                     SetCompositionText(ts, ec, &r->compose, 1);
+                    SetInterimSelection(ts, es->context, ec);
                 }
             }
             break;
@@ -235,9 +266,21 @@ static HRESULT STDMETHODCALLTYPE ES_DoEditSession(
             if (ts->composition) {
                 if (commitLen > 0)
                     SetCompositionText(ts, ec, commitBuf, commitLen);
+                /* Move selection to after committed text before ending */
+                SetSelectionToCompositionEnd(ts, es->context, ec);
                 EndComposition(ts, ec);
             } else if (commitLen > 0) {
-                InsertText(es->context, ec, commitBuf, commitLen);
+                /* No active composition (e.g. standalone vowel).
+                 * Start+end a composition to ensure correct cursor positioning,
+                 * preventing async race where the next key is inserted before us. */
+                StartComposition(ts, es->context, ec);
+                if (ts->composition) {
+                    SetCompositionText(ts, ec, commitBuf, commitLen);
+                    SetSelectionToCompositionEnd(ts, es->context, ec);
+                    EndComposition(ts, ec);
+                } else {
+                    InsertText(es->context, ec, commitBuf, commitLen);
+                }
             }
             /* No new composition (flush = done) */
             break;
