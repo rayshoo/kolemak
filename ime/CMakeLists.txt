@@ -12,6 +12,10 @@ set(SOURCES
     src/edit_session.c
     src/hangul.c
     src/keymap.c
+    src/settings.c
+    src/langbar.c
+    src/tooltip.c
+    src/tray.c
 )
 
 # Build as a shared library (DLL)
@@ -30,6 +34,8 @@ target_link_libraries(kolemak PRIVATE
     uuid
     advapi32
     user32
+    shell32
+    gdi32
 )
 
 # MSVC-specific settings

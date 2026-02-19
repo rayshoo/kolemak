@@ -6,6 +6,7 @@
  */
 
 #include "kolemak.h"
+#include "settings.h"
 
 /* Forward declarations for vtables defined in key_handler.c */
 extern const ITfKeyEventSinkVtbl g_keyEventSinkVtbl;
@@ -144,6 +145,7 @@ static HRESULT TS_RegisterPreservedKey(TextService *ts)
     HRESULT hr;
     TF_PRESERVEDKEY pkHangul;
     TF_PRESERVEDKEY pkRightAlt;
+    TF_PRESERVEDKEY pkWinSpace;
 
     hr = ts->threadMgr->lpVtbl->QueryInterface(
         ts->threadMgr, &IID_ITfKeystrokeMgr, (void **)&pKeyMgr);
@@ -167,6 +169,15 @@ static HRESULT TS_RegisterPreservedKey(TextService *ts)
         &pkRightAlt,
         KOLEMAK_DESC, KOLEMAK_DESC_LEN);
 
+    /* Custom hotkey for Colemak/QWERTY toggle (default: Ctrl+Space) */
+    pkWinSpace.uVKey = (UINT)ts->hotkeyVk;
+    pkWinSpace.uModifiers = (UINT)ts->hotkeyModifiers;
+    pKeyMgr->lpVtbl->PreserveKey(
+        pKeyMgr, ts->clientId,
+        &GUID_KolemakPreservedKey_ColemakToggle,
+        &pkWinSpace,
+        KOLEMAK_DESC, KOLEMAK_DESC_LEN);
+
     pKeyMgr->lpVtbl->Release(pKeyMgr);
     return S_OK;
 }
@@ -176,6 +187,7 @@ static void TS_UnregisterPreservedKey(TextService *ts)
     ITfKeystrokeMgr *pKeyMgr = NULL;
     TF_PRESERVEDKEY pkHangul;
     TF_PRESERVEDKEY pkRightAlt;
+    TF_PRESERVEDKEY pkWinSpace;
 
     if (SUCCEEDED(ts->threadMgr->lpVtbl->QueryInterface(
             ts->threadMgr, &IID_ITfKeystrokeMgr, (void **)&pKeyMgr)))
@@ -189,6 +201,11 @@ static void TS_UnregisterPreservedKey(TextService *ts)
         pkRightAlt.uModifiers = TF_MOD_ON_KEYUP | TF_MOD_RALT;
         pKeyMgr->lpVtbl->UnpreserveKey(
             pKeyMgr, &GUID_KolemakPreservedKey_Toggle, &pkRightAlt);
+
+        pkWinSpace.uVKey = (UINT)ts->hotkeyVk;
+        pkWinSpace.uModifiers = (UINT)ts->hotkeyModifiers;
+        pKeyMgr->lpVtbl->UnpreserveKey(
+            pKeyMgr, &GUID_KolemakPreservedKey_ColemakToggle, &pkWinSpace);
 
         pKeyMgr->lpVtbl->Release(pKeyMgr);
     }
@@ -206,6 +223,8 @@ static HRESULT STDMETHODCALLTYPE TS_Deactivate(
 {
     TextService *ts = TS_FROM_TIP(pThis);
 
+    LangBar_Unregister(ts);
+    KolemakTray_Unregister(ts);
     TS_UnregisterPreservedKey(ts);
     TS_UnadviseKeyEventSink(ts);
     TS_UnadviseThreadMgrSink(ts);
@@ -236,8 +255,18 @@ static HRESULT STDMETHODCALLTYPE TS_ActivateEx(
 
     hangul_ic_init(&ts->hangulCtx);
     ts->koreanMode = FALSE;
+    ts->colemakMode = TRUE;
+    ts->capsLockAsBackspace = TRUE;
+    ts->semicolonSwap = TRUE;
+    ts->hotkeyVk = VK_SPACE;
+    ts->hotkeyModifiers = TF_MOD_CONTROL;
     ts->composition = NULL;
+    ts->langBarButton = NULL;
     ts->threadMgrSinkCookie = TF_INVALID_COOKIE;
+
+    /* Load saved settings from registry; create defaults if key doesn't exist */
+    if (!Settings_Load(ts))
+        Settings_Save(ts);
 
     hr = TS_AdviseThreadMgrSink(ts);
     if (FAILED(hr)) goto fail;
@@ -247,6 +276,14 @@ static HRESULT STDMETHODCALLTYPE TS_ActivateEx(
 
     hr = TS_RegisterPreservedKey(ts);
     if (FAILED(hr)) goto fail;
+
+    /* Initialize tooltip, tray icon, and language bar button (non-fatal) */
+    KolemakTooltip_Init(g_hInst);
+    KolemakTray_Register(ts);
+    LangBar_Register(ts);
+
+    /* Set initial keyboard open/close state for system tray indicator */
+    TextService_SetKeyboardOpen(ts, ts->koreanMode);
 
     return S_OK;
 
@@ -306,7 +343,9 @@ static HRESULT STDMETHODCALLTYPE TMES_OnSetFocus(
     ITfThreadMgrEventSink *pThis,
     ITfDocumentMgr *pdimFocus, ITfDocumentMgr *pdimPrevFocus)
 {
-    (void)pThis; (void)pdimFocus; (void)pdimPrevFocus;
+    TextService *ts = TS_FROM_THREAD_MGR_SINK(pThis);
+    (void)pdimFocus; (void)pdimPrevFocus;
+    Settings_ReloadPrefs(ts);
     return S_OK;
 }
 
@@ -361,10 +400,27 @@ static HRESULT STDMETHODCALLTYPE CS_OnCompositionTerminated(
     ITfCompositionSink *pThis, TfEditCookie ecWrite, ITfComposition *pComp)
 {
     TextService *ts = TS_FROM_COMPOSITION_SINK(pThis);
-    (void)ecWrite;
-    (void)pComp;
 
-    /* The system terminated our composition (e.g., focus lost) */
+    /* Position cursor at end of composition text before releasing.
+     * This prevents the cursor from jumping to before the text
+     * when returning from Alt+Tab. */
+    if (pComp) {
+        ITfRange *pRange = NULL;
+        if (SUCCEEDED(pComp->lpVtbl->GetRange(pComp, &pRange))) {
+            ITfContext *ctx = NULL;
+            if (SUCCEEDED(pRange->lpVtbl->GetContext(pRange, &ctx))) {
+                TF_SELECTION sel;
+                pRange->lpVtbl->Collapse(pRange, ecWrite, TF_ANCHOR_END);
+                sel.range = pRange;
+                sel.style.ase = TF_AE_NONE;
+                sel.style.fInterimChar = FALSE;
+                ctx->lpVtbl->SetSelection(ctx, ecWrite, 1, &sel);
+                ctx->lpVtbl->Release(ctx);
+            }
+            pRange->lpVtbl->Release(pRange);
+        }
+    }
+
     if (ts->composition) {
         ts->composition->lpVtbl->Release(ts->composition);
         ts->composition = NULL;
@@ -380,6 +436,31 @@ static const ITfCompositionSinkVtbl g_compositionSinkVtbl = {
     CS_Release,
     CS_OnCompositionTerminated,
 };
+
+/* ===== Compartment helper ===== */
+
+void TextService_SetKeyboardOpen(TextService *ts, BOOL open)
+{
+    ITfCompartmentMgr *pCompMgr = NULL;
+    ITfCompartment *pComp = NULL;
+
+    if (!ts->threadMgr) return;
+
+    if (SUCCEEDED(ts->threadMgr->lpVtbl->QueryInterface(
+            ts->threadMgr, &IID_ITfCompartmentMgr, (void **)&pCompMgr)))
+    {
+        if (SUCCEEDED(pCompMgr->lpVtbl->GetCompartment(
+                pCompMgr, &GUID_COMPARTMENT_KEYBOARD_OPENCLOSE, &pComp)))
+        {
+            VARIANT var;
+            var.vt = VT_I4;
+            var.lVal = open ? 1 : 0;
+            pComp->lpVtbl->SetValue(pComp, ts->clientId, &var);
+            pComp->lpVtbl->Release(pComp);
+        }
+        pCompMgr->lpVtbl->Release(pCompMgr);
+    }
+}
 
 /* ===== TextService creation ===== */
 

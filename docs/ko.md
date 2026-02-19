@@ -104,6 +104,79 @@ Colemak 모드에서 다음 QWERTY 키가 재매핑됩니다. 그 외의 키는 
 | `;` | `O` | [빌드 변형](#빌드-변형) 참조 |
 | `N` | `K` | `ㅜ` |
 
+## 네이티브 IME 빌드 (개발자용)
+
+AutoHotkey 기반 `.exe` 대신, Windows TSF(Text Services Framework)를 이용한 네이티브 IME DLL을 직접 빌드하여 사용할 수 있습니다.
+
+### 네이티브 IME 기능
+
+- **Colemak 영문 + 두벌식 한글 입력** — 한/영 전환: `한글 키` 또는 `우측 Alt`
+- **Colemak / QWERTY 전환** — `Ctrl+Space`로 Colemak과 QWERTY 레이아웃 전환
+- **CapsLock → Backspace** — CapsLock이 Backspace로 동작, `Shift+CapsLock`으로 실제 CapsLock 토글
+- **Language Bar 통합** — 작업 표시줄 언어 영역에 현재 모드("한" / "CM" / "QW") 표시, 클릭 시 설정 메뉴
+- **설정 자동 저장** — Colemak 모드, CapsLock→Backspace 설정이 레지스트리에 저장되어 재시작 후에도 유지
+
+### 빌드 요구 사항
+
+- CMake 3.16 이상
+- Visual Studio 2022 (또는 2019) — C/C++ 데스크톱 개발 워크로드 포함
+- Windows SDK
+
+### 빌드 방법
+
+#### build.bat 사용 (ime/ 디렉토리에서)
+
+```cmd
+cd ime
+build.bat
+```
+
+빌드 결과물: `ime/build/Release/kolemak.dll`
+
+#### Makefile 사용 (프로젝트 루트에서)
+
+```bash
+make build
+```
+
+### 설치 (등록)
+
+빌드된 DLL을 Windows에 IME로 등록합니다. **관리자 권한**이 필요합니다.
+
+#### build.bat 사용
+
+```cmd
+cd ime
+build.bat install
+```
+
+#### Makefile 사용
+
+```bash
+make install
+```
+
+등록 후 **Windows 설정 → 시간 및 언어 → 언어 및 지역 → 한국어 → 키보드**에서 "Kolemak IME"를 선택할 수 있습니다.
+
+### 제거 (등록 해제)
+
+```cmd
+cd ime
+build.bat uninstall
+```
+
+또는:
+
+```bash
+make uninstall
+```
+
+### 빌드 정리
+
+```bash
+make clean
+```
+
 ## 알려진 제한 사항
 
 - **키 인터셉트 방식** — Kolemak은 AutoHotkey를 통해 키 입력을 가로채어 변환하는 방식으로, OS 드라이버 수준에서 동작하지 않습니다. CPU 부하가 높거나 빠르게 연타할 경우 간헐적으로 QWERTY 키가 입력될 수 있습니다.

@@ -104,6 +104,79 @@ The following QWERTY keys are remapped in Colemak mode. All other keys remain un
 | `;` | `O` | see [Variants](#variants) |
 | `N` | `K` | `ㅜ` |
 
+## Building the Native IME (for developers)
+
+Instead of the AutoHotkey-based `.exe`, you can build and use the native Windows TSF (Text Services Framework) IME DLL directly.
+
+### Native IME Features
+
+- **Colemak English + Dubeolsik Korean input** — Toggle Korean/English with `Hangul key` or `Right Alt`
+- **Colemak / QWERTY toggle** — Press `Ctrl+Space` to switch between Colemak and QWERTY layouts
+- **CapsLock as Backspace** — CapsLock acts as Backspace, `Shift+CapsLock` toggles actual CapsLock
+- **Language Bar integration** — Shows current mode ("한" / "CM" / "QW") in the taskbar language area with a settings menu on click
+- **Persistent settings** — Colemak mode and CapsLock→Backspace preferences are saved to registry and persist across restarts
+
+### Build Requirements
+
+- CMake 3.16 or later
+- Visual Studio 2022 (or 2019) with C/C++ Desktop Development workload
+- Windows SDK
+
+### Building
+
+#### Using build.bat (from the ime/ directory)
+
+```cmd
+cd ime
+build.bat
+```
+
+Build output: `ime/build/Release/kolemak.dll`
+
+#### Using Makefile (from the project root)
+
+```bash
+make build
+```
+
+### Installation (Registration)
+
+Registers the built DLL as a Windows IME. **Requires administrator privileges.**
+
+#### Using build.bat
+
+```cmd
+cd ime
+build.bat install
+```
+
+#### Using Makefile
+
+```bash
+make install
+```
+
+After registration, go to **Windows Settings → Time & Language → Language & Region → Korean → Keyboard** and select "Kolemak IME".
+
+### Uninstallation
+
+```cmd
+cd ime
+build.bat uninstall
+```
+
+Or:
+
+```bash
+make uninstall
+```
+
+### Cleaning Build Artifacts
+
+```bash
+make clean
+```
+
 ## Known Limitations
 
 - **Key interception based** — Kolemak works by intercepting and remapping keystrokes via AutoHotkey, not at the OS driver level. Under heavy CPU load or rapid key sequences, occasional QWERTY keystrokes may pass through.

@@ -66,9 +66,17 @@ static const JamoMapping g_dubeolsik_shift[26] = {
     { 15, -1 },  /* Z -> ㅋ (same) */
 };
 
-JamoMapping keymap_get_jamo(UINT vk, BOOL shift)
+JamoMapping keymap_get_jamo(UINT vk, BOOL shift, BOOL semicolonSwap)
 {
     JamoMapping none = { -1, -1 };
+
+    if (semicolonSwap) {
+        /* "Unchanged" mode: ㅔ/ㅖ on ; key, P key is not a jamo */
+        if (vk == VK_OEM_1)
+            return shift ? g_dubeolsik_shift['P' - 'A'] : g_dubeolsik['P' - 'A'];
+        if (vk == 'P')
+            return none;
+    }
 
     if (vk >= 'A' && vk <= 'Z') {
         int idx = vk - 'A';
@@ -108,6 +116,49 @@ static const ColemakEntry g_colemak[] = {
 };
 
 #define COLEMAK_COUNT (sizeof(g_colemak) / sizeof(g_colemak[0]))
+
+/* ===== Colemak VK-to-VK mapping for modifier shortcuts ===== */
+/* Maps QWERTY VK code to Colemak VK code (letter keys only) */
+
+static const BYTE g_colemak_vk_map[26] = {
+    'A',  /* A -> A */
+    'B',  /* B -> B */
+    'C',  /* C -> C */
+    'S',  /* D -> S */
+    'F',  /* E -> F */
+    'T',  /* F -> T */
+    'D',  /* G -> D */
+    'H',  /* H -> H */
+    'U',  /* I -> U */
+    'N',  /* J -> N */
+    'E',  /* K -> E */
+    'I',  /* L -> I */
+    'M',  /* M -> M */
+    'K',  /* N -> K */
+    'Y',  /* O -> Y */
+    0,    /* P -> ; (VK_OEM_1, handled separately) */
+    'Q',  /* Q -> Q */
+    'P',  /* R -> P */
+    'R',  /* S -> R */
+    'G',  /* T -> G */
+    'L',  /* U -> L */
+    'V',  /* V -> V */
+    'W',  /* W -> W */
+    'X',  /* X -> X */
+    'J',  /* Y -> J */
+    'Z',  /* Z -> Z */
+};
+
+UINT keymap_get_colemak_vk(UINT vk)
+{
+    if (vk >= 'A' && vk <= 'Z') {
+        BYTE mapped = g_colemak_vk_map[vk - 'A'];
+        return mapped ? (UINT)mapped : (UINT)VK_OEM_1;
+    }
+    if (vk == VK_OEM_1)
+        return 'O';
+    return vk;
+}
 
 BOOL keymap_get_colemak(UINT vk, BOOL shift, WCHAR *ch)
 {

@@ -17,11 +17,13 @@
 
 #include "hangul.h"
 #include "keymap.h"
+#include "tooltip.h"
 
 /* ===== GUIDs ===== */
 extern const CLSID CLSID_KolemakTextService;
 extern const GUID  GUID_KolemakProfile;
 extern const GUID  GUID_KolemakPreservedKey_Toggle;
+extern const GUID  GUID_KolemakPreservedKey_ColemakToggle;
 extern const GUID  GUID_KolemakDisplayAttribute;
 
 /* ===== Global state ===== */
@@ -61,6 +63,17 @@ struct TextService {
     /* Hangul engine */
     HangulContext   hangulCtx;
     BOOL            koreanMode;
+    BOOL            colemakMode;
+    BOOL            capsLockAsBackspace;
+    UINT            colemakRemapVk;    /* guard for Ctrl/Alt shortcut VK remap */
+    BOOL            semicolonSwap;     /* TRUE = ㅔ on ; key ("unchanged" mode) */
+
+    /* Custom hotkey for Colemak/QWERTY toggle */
+    UINT            hotkeyVk;
+    UINT            hotkeyModifiers;
+
+    /* Language bar */
+    struct LangBarButton *langBarButton;
 };
 
 /* Container-of macros to get TextService* from interface pointer */
@@ -76,12 +89,16 @@ struct TextService {
 #define TS_FROM_COMPOSITION_SINK(p) \
     ((TextService *)((BYTE *)(p) - offsetof(TextService, compositionSink)))
 
+/* Forward declaration */
+typedef struct LangBarButton LangBarButton;
+
 /* TextService creation */
 HRESULT TextService_Create(IClassFactory *pFactory, IUnknown *pOuter, REFIID riid, void **ppvObj);
 
 /* TextService internal helpers (called from key_handler.c / edit_session.c) */
 void TextService_AddRefDll(void);
 void TextService_ReleaseDll(void);
+void TextService_SetKeyboardOpen(TextService *ts, BOOL open);
 
 /* ===== Edit session ===== */
 
@@ -109,6 +126,22 @@ struct EditSession {
 
 HRESULT EditSession_Create(TextService *ts, ITfContext *ctx,
                            EditSessionType type, EditSession **ppSession);
+
+/* ===== Settings (settings.c) ===== */
+BOOL Settings_Load(TextService *ts);
+void Settings_Save(TextService *ts);
+void Settings_ReloadPrefs(TextService *ts);
+
+/* ===== System Tray (tray.c) ===== */
+HRESULT KolemakTray_Register(TextService *ts);
+void    KolemakTray_Unregister(TextService *ts);
+
+/* ===== Language Bar (langbar.c) ===== */
+HRESULT LangBarButton_Create(TextService *ts, LangBarButton **ppButton);
+void    LangBarButton_Destroy(LangBarButton *button);
+void    LangBarButton_UpdateState(LangBarButton *button);
+HRESULT LangBar_Register(TextService *ts);
+void    LangBar_Unregister(TextService *ts);
 
 /* ===== Registration helpers ===== */
 HRESULT KolemakIME_RegisterServer(void);
