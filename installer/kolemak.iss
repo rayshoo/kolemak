@@ -59,12 +59,7 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
-    if MsgBox(
-      'Kolemak IME 설치가 완료되었습니다.'#13#10 +
-      #13#10 +
-      'CapsLock 키 리매핑을 적용하려면 재부팅이 필요합니다.'#13#10 +
-      '지금 재부팅하시겠습니까?',
-      mbConfirmation, MB_YESNO) = IDYES
+    if MsgBox('Kolemak IME 설치가 완료되었습니다.' + #13#10 + #13#10 + 'CapsLock 키 리매핑을 적용하려면 재부팅이 필요합니다.' + #13#10 + '지금 재부팅하시겠습니까?', mbConfirmation, MB_YESNO) = IDYES
     then
       Exec('shutdown.exe', '/r /t 5 /c "Kolemak IME 설치 완료 - 재부팅 중..."',
            '', SW_HIDE, ewNoWait, ResultCode);
@@ -77,12 +72,7 @@ var
 begin
   if CurUninstallStep = usPostUninstall then
   begin
-    if MsgBox(
-      'Kolemak IME가 제거되었습니다.'#13#10 +
-      #13#10 +
-      'CapsLock 키 복원을 위해 재부팅이 필요합니다.'#13#10 +
-      '지금 재부팅하시겠습니까?',
-      mbConfirmation, MB_YESNO) = IDYES
+    if MsgBox('Kolemak IME가 제거되었습니다.' + #13#10 + #13#10 + 'CapsLock 키 복원을 위해 재부팅이 필요합니다.' + #13#10 + '지금 재부팅하시겠습니까?', mbConfirmation, MB_YESNO) = IDYES
     then
       Exec('shutdown.exe', '/r /t 5 /c "Kolemak IME 제거 완료 - 재부팅 중..."',
            '', SW_HIDE, ewNoWait, ResultCode);
