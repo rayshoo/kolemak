@@ -57,55 +57,25 @@ Filename: "regsvr32.exe"; Parameters: "/u /s ""{app}\x86\kolemak.dll"""; Flags: 
 Filename: "regsvr32.exe"; Parameters: "/u /s ""{app}\x64\kolemak.dll"""; Flags: runhidden; Check: Is64BitInstallMode
 
 [Code]
-function GetUninstallString(): String;
-var
-  UninstallKey: String;
-  UninstallString: String;
-begin
-  Result := '';
-  UninstallKey := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1';
-  if RegQueryStringValue(HKLM, UninstallKey, 'UninstallString', UninstallString) then
-    Result := UninstallString
-  else if RegQueryStringValue(HKCU, UninstallKey, 'UninstallString', UninstallString) then
-    Result := UninstallString;
-end;
-
 function InitializeSetup(): Boolean;
 var
   UninstallString: String;
   ResultCode: Integer;
-  Choice: Integer;
 begin
   Result := True;
-  UninstallString := GetUninstallString();
 
-  if UninstallString <> '' then
+  if not RegQueryStringValue(HKLM,
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\{B8F5E3A1-7C2D-4E6F-9A1B-3D5E7F9C2A4B}_is1',
+    'UninstallString', UninstallString) then
+    Exit;
+
+  if MsgBox('Kolemak IME가 이미 설치되어 있습니다.' + #13#10 +
+    '제거하시겠습니까?', mbConfirmation, MB_YESNO) = IDYES then
   begin
-    Choice := MsgBox('Kolemak IME가 이미 설치되어 있습니다.' + #13#10 + #13#10 +
-      '예 = 재설치 (덮어쓰기)' + #13#10 +
-      '아니오 = 제거 (언인스톨)' + #13#10 +
-      '취소 = 아무것도 하지 않음',
-      mbConfirmation, MB_YESNOCANCEL);
-
-    case Choice of
-      IDYES:
-        begin
-          { 기존 버전 제거 후 재설치 진행 }
-          Exec(RemoveQuotes(UninstallString), '/SILENT /NORESTART', '',
-               SW_SHOW, ewWaitUntilTerminated, ResultCode);
-          Result := True;
-        end;
-      IDNO:
-        begin
-          { 제거만 실행하고 인스톨러 종료 }
-          Exec(RemoveQuotes(UninstallString), '/NORESTART', '',
-               SW_SHOW, ewWaitUntilTerminated, ResultCode);
-          Result := False;
-        end;
-      IDCANCEL:
-        Result := False;
-    end;
+    Exec(RemoveQuotes(UninstallString), '/NORESTART', '',
+         SW_SHOW, ewWaitUntilTerminated, ResultCode);
   end;
+  Result := False;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
