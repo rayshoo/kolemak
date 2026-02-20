@@ -11,6 +11,7 @@
 #   make clean     - 빌드 결과물 삭제
 #   make installer - 인스톨러 생성 (Inno Setup 필요)
 
+VERSION       := $(shell sed -n 's/.*VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt | head -1)
 BUILD64_DIR   := build
 BUILD32_DIR   := build32
 DLL64_PATH    := $(BUILD64_DIR)/Release/kolemak.dll
@@ -49,8 +50,8 @@ uninstall:
 	@echo "[+] Kolemak IME unregistered."
 
 installer: $(DLL64_PATH) $(DLL32_PATH)
-	@echo "[*] Building installer..."
-	$(ISCC) installer/kolemak.iss
+	@echo "[*] Building installer (v$(VERSION))..."
+	$(ISCC) /DAppVer=$(VERSION) installer/kolemak.iss
 	@echo "[+] Installer created: dist/kolemak-install.exe"
 
 clean:

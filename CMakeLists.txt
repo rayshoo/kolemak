@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.16)
-project(kolemak-ime C)
+project(kolemak-ime VERSION 1.0.0 LANGUAGES C)
+
+# CI에서 태그 버전 오버라이드
+if(DEFINED VERSION_OVERRIDE)
+    set(PROJECT_VERSION "${VERSION_OVERRIDE}")
+endif()
 
 set(CMAKE_C_STANDARD 11)
 
@@ -39,6 +44,11 @@ target_link_libraries(kolemak PRIVATE
     user32
     shell32
     gdi32
+)
+
+# C 코드에 버전 전달
+target_compile_definitions(kolemak PRIVATE
+    KOLEMAK_VERSION="${PROJECT_VERSION}"
 )
 
 # MSVC-specific settings

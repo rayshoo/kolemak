@@ -10,10 +10,14 @@
 ;   2. Inno Setup Compiler에서 이 파일을 열고 빌드
 ;   또는 명령줄: iscc installer/kolemak.iss
 
+#ifndef AppVer
+  #define AppVer "1.0.0"
+#endif
+
 [Setup]
 AppId={{B8F5E3A1-7C2D-4E6F-9A1B-3D5E7F9C2A4B}
 AppName=Kolemak IME
-AppVersion=1.0.0
+AppVersion={#AppVer}
 AppPublisher=Kolemak
 AppPublisherURL=https://github.com/rayshoo/kolemak
 DefaultDirName={autopf}\Kolemak
