@@ -10,7 +10,7 @@ A Colemak keyboard layout input method for Windows with native Korean (Dubeolsik
 - **CapsLock as Backspace** — CapsLock acts as Backspace, `Shift+CapsLock` toggles actual CapsLock
 - **Language Bar integration** — Right-click menu in the taskbar language area for toggling Colemak mode and CapsLock settings
 - **System tray settings** — Right-click the tray icon to configure CapsLock behavior, ㅔ key position, and toggle hotkey
-- **Persistent settings** — All preferences are saved to registry and persist across restarts
+- **Persistent settings** — CapsLock, ㅔ key position, and hotkey settings are saved to registry and persist across restarts (Colemak mode always starts as default)
 
 ## Requirements
 
@@ -108,6 +108,7 @@ A portable version is also available that runs as a single executable without in
 - **No installation needed** — Just run the `.exe` file
 - **No admin privileges required** — Can be run from a USB drive anywhere
 - **Requires Microsoft Korean IME** — Works alongside the default Windows Korean input method
+- **Tray menu settings** — Toggle CapsLock → Backspace and Semicolon Swap from the tray menu (settings saved to INI file)
 
 ### Portable Version Limitations
 
@@ -116,15 +117,16 @@ A portable version is also available that runs as a single executable without in
 
 ### Portable Version Download
 
-Download from the [Releases](https://github.com/rayshoo/kolemak/releases) page:
-- `kolemak-changed.exe` — ㅔ key moves to P key position
-- `kolemak-unchanged.exe` — ㅔ key stays on original ; key
+Download `kolemak-portable.exe` from the [Releases](https://github.com/rayshoo/kolemak/releases) page.
 
 ### Portable Version Usage
 
-1. Run the downloaded `.exe` file
+1. Run `kolemak-portable.exe`
 2. Press `Win+Space` to toggle Colemak / QWERTY
-3. Exit: right-click the tray icon → Exit
+3. Right-click the tray icon to change settings:
+   - **CapsLock to Backspace** — Toggle CapsLock as Backspace
+   - **Semicolon Swap** — Toggle ㅔ key position (same as "Move ㅔ key to ; position" in the IME version)
+4. Exit: right-click the tray icon → Exit
 
 ## License
 

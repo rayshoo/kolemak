@@ -10,7 +10,7 @@ Windows에서 두벌식 한글 입력을 지원하는 Colemak 자판 입력기�
 - **CapsLock → Backspace** — CapsLock이 Backspace로 동작, `Shift+CapsLock`으로 실제 CapsLock 토글
 - **Language Bar 통합** — 작업 표시줄 언어 영역에서 우클릭 메뉴로 Colemak 모드, CapsLock 설정 전환
 - **시스템 트레이 설정** — 트레이 아이콘 우클릭으로 설정 변경 (CapsLock 동작, ㅔ 키 위치, 전환 단축키)
-- **설정 자동 저장** — 모든 설정이 레지스트리에 저장되어 재시작 후에도 유지
+- **설정 자동 저장** — CapsLock, ㅔ 키 위치, 단축키 설정이 레지스트리에 저장되어 재시작 후에도 유지 (Colemak 모드는 항상 기본으로 시작)
 
 ## 요구 사항
 
@@ -108,6 +108,7 @@ Colemak 모드에서 다음 QWERTY 키가 재매핑됩니다. 그 외의 키는 
 - **설치 불필요** — `.exe` 파일 하나만 실행하면 바로 사용 가능
 - **관리자 권한 불필요** — USB에 넣어서 어디서든 사용 가능
 - **Microsoft 한글 입력기 필요** — Windows 기본 한국어 입력기와 함께 동작
+- **트레이 메뉴 설정** — CapsLock → Backspace, Semicolon Swap을 트레이 메뉴에서 토글 (설정은 INI 파일에 저장)
 
 ### 포터블 버전 제한 사항
 
@@ -116,17 +117,16 @@ Colemak 모드에서 다음 QWERTY 키가 재매핑됩니다. 그 외의 키는 
 
 ### 포터블 버전 다운로드
 
-[Releases](https://github.com/rayshoo/kolemak/releases) 페이지에서 다운로드합니다:
-- `kolemak-changed.exe` — ㅔ 키가 P 키 위치로 이동
-- `kolemak-unchanged.exe` — ㅔ 키가 원래 ; 키에 유지
+[Releases](https://github.com/rayshoo/kolemak/releases) 페이지에서 `kolemak-portable.exe`를 다운로드합니다.
 
 ### 포터블 버전 사용법
 
-1. 다운로드한 `.exe` 파일을 실행합니다
+1. 다운로드한 `kolemak-portable.exe`를 실행합니다
 2. `Win+Space`로 Colemak / QWERTY 전환
-3. 종료: 트레이 아이콘 우클릭 → 종료
-
-> 시작 시 자동 실행하려면 작업 스케줄러에 등록하세요. 자세한 방법은 이전 버전의 문서를 참고하세요.
+3. 트레이 아이콘 우클릭으로 설정 변경:
+   - **CapsLock to Backspace** — CapsLock → Backspace 토글
+   - **Semicolon Swap** — ㅔ 키 위치 변경 토글 (IME 버전의 "ㅔ 키를 ; 위치로 변경"과 동일)
+4. 종료: 트레이 아이콘 우클릭 → Exit
 
 ## 라이선스
 

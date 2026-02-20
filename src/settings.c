@@ -32,8 +32,7 @@ BOOL Settings_Load(TextService *ts)
     if (ret != ERROR_SUCCESS)
         return FALSE; /* No settings yet, use defaults */
 
-    if (ReadRegDWORD(hKey, KOLEMAK_REG_COLEMAK_MODE, &val))
-        ts->colemakMode = (val != 0);
+    /* colemakMode는 저장/복원하지 않음: 항상 Colemak으로 시작 */
 
     if (ReadRegDWORD(hKey, KOLEMAK_REG_CAPSLOCK_BS, &val))
         ts->capsLockAsBackspace = (val != 0);
@@ -64,7 +63,7 @@ void Settings_Save(TextService *ts)
     if (ret != ERROR_SUCCESS)
         return;
 
-    WriteRegDWORD(hKey, KOLEMAK_REG_COLEMAK_MODE, ts->colemakMode ? 1 : 0);
+    /* colemakMode는 저장하지 않음: 항상 Colemak으로 시작 */
     WriteRegDWORD(hKey, KOLEMAK_REG_CAPSLOCK_BS, ts->capsLockAsBackspace ? 1 : 0);
     WriteRegDWORD(hKey, KOLEMAK_REG_SEMICOLON_SWAP, ts->semicolonSwap ? 1 : 0);
     WriteRegDWORD(hKey, KOLEMAK_REG_HOTKEY_VK, ts->hotkeyVk);
