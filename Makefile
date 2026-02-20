@@ -9,15 +9,16 @@
 #   make install   - IME 등록 (관리자 권한 필요)
 #   make uninstall - IME 등록 해제 (관리자 권한 필요)
 #   make clean     - 빌드 결과물 삭제
+#   make installer - 인스톨러 생성 (Inno Setup 필요)
 
-IME_DIR       := ime
-BUILD64_DIR   := $(IME_DIR)/build
-BUILD32_DIR   := $(IME_DIR)/build32
+BUILD64_DIR   := build
+BUILD32_DIR   := build32
 DLL64_PATH    := $(BUILD64_DIR)/Release/kolemak.dll
 DLL32_PATH    := $(BUILD32_DIR)/Release/kolemak.dll
 CMAKE_GEN     ?= "Visual Studio 17 2022"
+ISCC          ?= iscc
 
-.PHONY: build build64 build32 install uninstall clean
+.PHONY: build build64 build32 install uninstall clean installer
 
 build: build64 build32
 
@@ -47,9 +48,14 @@ uninstall:
 	regsvr32 //u //s "$(CURDIR)/$(DLL32_PATH)"
 	@echo "[+] Kolemak IME unregistered."
 
+installer: $(DLL64_PATH) $(DLL32_PATH)
+	@echo "[*] Building installer..."
+	$(ISCC) installer/kolemak.iss
+	@echo "[+] Installer created: dist/kolemak-install.exe"
+
 clean:
 	@echo "[*] Cleaning build artifacts..."
-	rm -rf $(BUILD64_DIR) $(BUILD32_DIR)
+	rm -rf $(BUILD64_DIR) $(BUILD32_DIR) dist
 	@echo "[+] Clean complete."
 
 $(DLL64_PATH):
