@@ -26,14 +26,14 @@ build: build64 build32
 build64:
 	@echo "[*] Building Kolemak IME (x64)..."
 	@mkdir -p $(BUILD64_DIR)
-	cd $(BUILD64_DIR) && cmake .. -G $(CMAKE_GEN) -A x64
+	cd $(BUILD64_DIR) && cmake .. -G $(CMAKE_GEN) -A x64 -DVERSION_OVERRIDE=$(VERSION)
 	cd $(BUILD64_DIR) && cmake --build . --config Release
 	@echo "[+] Build succeeded: $(DLL64_PATH)"
 
 build32:
 	@echo "[*] Building Kolemak IME (x86)..."
 	@mkdir -p $(BUILD32_DIR)
-	cd $(BUILD32_DIR) && cmake .. -G $(CMAKE_GEN) -A Win32
+	cd $(BUILD32_DIR) && cmake .. -G $(CMAKE_GEN) -A Win32 -DVERSION_OVERRIDE=$(VERSION)
 	cd $(BUILD32_DIR) && cmake --build . --config Release
 	@echo "[+] Build succeeded: $(DLL32_PATH)"
 

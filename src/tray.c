@@ -11,6 +11,7 @@
 #include "tray.h"
 #include "settings.h"
 #include "resource.h"
+#include "version.h"
 
 /* ===== Version string helpers ===== */
 

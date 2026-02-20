@@ -19,19 +19,19 @@ jobs:
     - name: Build x64 DLL
       shell: pwsh
       run: |
-        cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DVERSION_OVERRIDE=${{ steps.version.outputs.version }}
+        cmake -S . -B build -G "Visual Studio 17 2022" -A x64 "-DVERSION_OVERRIDE=${{ steps.version.outputs.version }}"
         cmake --build build --config Release
 
     - name: Build x86 DLL
       shell: pwsh
       run: |
-        cmake -S . -B build32 -G "Visual Studio 17 2022" -A Win32 -DVERSION_OVERRIDE=${{ steps.version.outputs.version }}
+        cmake -S . -B build32 -G "Visual Studio 17 2022" -A Win32 "-DVERSION_OVERRIDE=${{ steps.version.outputs.version }}"
         cmake --build build32 --config Release
 
     - name: Build installer with Inno Setup
       shell: pwsh
       run: |
-        iscc /DAppVer=${{ steps.version.outputs.version }} installer/kolemak.iss
+        iscc "/DAppVer=${{ steps.version.outputs.version }}" installer/kolemak.iss
 
     - name: Upload IME artifact
       uses: actions/upload-artifact@v4
