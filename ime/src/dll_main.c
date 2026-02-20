@@ -97,6 +97,199 @@ STDAPI DllCanUnloadNow(void)
     return (g_cRefDll <= 0) ? S_OK : S_FALSE;
 }
 
+/* ===== Scancode Map helpers ===== */
+
+/*
+ * Scancode Map binary format (in HKLM\SYSTEM\CurrentControlSet\Control\Keyboard Layout):
+ *   DWORD version;     // 0
+ *   DWORD flags;       // 0
+ *   DWORD count;       // number of mappings + 1 (null terminator)
+ *   WORD  target, source;  // repeated 'count-1' times
+ *   DWORD null_terminator; // 0
+ *
+ * We map CapsLock scancode 0x003A → F13 scancode 0x0064.
+ */
+
+#define SCANCODE_CAPSLOCK  0x003A
+#define SCANCODE_F13       0x0064
+#define SCMAP_HEADER_SIZE  (3 * sizeof(DWORD))  /* version + flags + count */
+#define SCMAP_ENTRY_SIZE   sizeof(DWORD)        /* target(WORD) + source(WORD) */
+
+static const WCHAR c_szKbdLayoutKey[] =
+    L"SYSTEM\\CurrentControlSet\\Control\\Keyboard Layout";
+
+static void ScancodeMap_Install(void)
+{
+    HKEY hKey = NULL;
+    BYTE *existing = NULL;
+    DWORD existSize = 0, type = 0;
+    DWORD count, newCount, i;
+    BYTE *newMap = NULL;
+    DWORD newSize;
+    BOOL found = FALSE;
+
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, c_szKbdLayoutKey,
+                      0, KEY_READ | KEY_WRITE, &hKey) != ERROR_SUCCESS)
+        return; /* No admin rights — silently skip */
+
+    /* Read existing Scancode Map if present */
+    if (RegQueryValueExW(hKey, L"Scancode Map", NULL, &type,
+                         NULL, &existSize) == ERROR_SUCCESS &&
+        type == REG_BINARY && existSize >= SCMAP_HEADER_SIZE + SCMAP_ENTRY_SIZE)
+    {
+        existing = (BYTE *)HeapAlloc(GetProcessHeap(), 0, existSize);
+        if (!existing) { RegCloseKey(hKey); return; }
+
+        if (RegQueryValueExW(hKey, L"Scancode Map", NULL, NULL,
+                             existing, &existSize) != ERROR_SUCCESS)
+        {
+            HeapFree(GetProcessHeap(), 0, existing);
+            existing = NULL;
+            existSize = 0;
+        }
+    }
+
+    if (existing) {
+        /* Parse existing map: check if CapsLock entry already exists */
+        count = *(DWORD *)(existing + 8); /* entry count (includes null term) */
+
+        for (i = 0; i < count - 1; i++) {
+            WORD *entry = (WORD *)(existing + SCMAP_HEADER_SIZE +
+                                   i * SCMAP_ENTRY_SIZE);
+            WORD source = entry[1];
+            if (source == SCANCODE_CAPSLOCK) {
+                /* Already has CapsLock mapping — update target to F13 */
+                entry[0] = SCANCODE_F13;
+                RegSetValueExW(hKey, L"Scancode Map", 0, REG_BINARY,
+                               existing, existSize);
+                found = TRUE;
+                break;
+            }
+        }
+
+        if (!found) {
+            /* Add CapsLock → F13 entry: rebuild with one more entry */
+            newCount = count + 1;
+            newSize = SCMAP_HEADER_SIZE + newCount * SCMAP_ENTRY_SIZE;
+            newMap = (BYTE *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+                                       newSize);
+            if (newMap) {
+                /* Copy header */
+                memcpy(newMap, existing, 8);
+                *(DWORD *)(newMap + 8) = newCount;
+                /* Copy existing entries (excluding null terminator) */
+                memcpy(newMap + SCMAP_HEADER_SIZE,
+                       existing + SCMAP_HEADER_SIZE,
+                       (count - 1) * SCMAP_ENTRY_SIZE);
+                /* Append our entry */
+                {
+                    WORD *entry = (WORD *)(newMap + SCMAP_HEADER_SIZE +
+                                           (count - 1) * SCMAP_ENTRY_SIZE);
+                    entry[0] = SCANCODE_F13;
+                    entry[1] = SCANCODE_CAPSLOCK;
+                }
+                /* Null terminator is already zero from HEAP_ZERO_MEMORY */
+                RegSetValueExW(hKey, L"Scancode Map", 0, REG_BINARY,
+                               newMap, newSize);
+                HeapFree(GetProcessHeap(), 0, newMap);
+            }
+        }
+        HeapFree(GetProcessHeap(), 0, existing);
+    } else {
+        /* No existing Scancode Map: create fresh */
+        BYTE map[SCMAP_HEADER_SIZE + 2 * SCMAP_ENTRY_SIZE];
+        memset(map, 0, sizeof(map));
+        *(DWORD *)(map + 8) = 2; /* 1 mapping + null terminator */
+        {
+            WORD *entry = (WORD *)(map + SCMAP_HEADER_SIZE);
+            entry[0] = SCANCODE_F13;
+            entry[1] = SCANCODE_CAPSLOCK;
+        }
+        /* Last DWORD is null terminator (already zero) */
+        RegSetValueExW(hKey, L"Scancode Map", 0, REG_BINARY,
+                       map, sizeof(map));
+    }
+
+    RegCloseKey(hKey);
+}
+
+static void ScancodeMap_Uninstall(void)
+{
+    HKEY hKey = NULL;
+    BYTE *existing = NULL;
+    DWORD existSize = 0, type = 0;
+    DWORD count, newCount, i, j;
+    BYTE *newMap = NULL;
+    DWORD newSize;
+
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, c_szKbdLayoutKey,
+                      0, KEY_READ | KEY_WRITE, &hKey) != ERROR_SUCCESS)
+        return;
+
+    if (RegQueryValueExW(hKey, L"Scancode Map", NULL, &type,
+                         NULL, &existSize) != ERROR_SUCCESS ||
+        type != REG_BINARY ||
+        existSize < SCMAP_HEADER_SIZE + SCMAP_ENTRY_SIZE)
+    {
+        RegCloseKey(hKey);
+        return;
+    }
+
+    existing = (BYTE *)HeapAlloc(GetProcessHeap(), 0, existSize);
+    if (!existing) { RegCloseKey(hKey); return; }
+
+    if (RegQueryValueExW(hKey, L"Scancode Map", NULL, NULL,
+                         existing, &existSize) != ERROR_SUCCESS)
+    {
+        HeapFree(GetProcessHeap(), 0, existing);
+        RegCloseKey(hKey);
+        return;
+    }
+
+    count = *(DWORD *)(existing + 8);
+
+    /* Count remaining entries after removing CapsLock source */
+    newCount = 1; /* null terminator */
+    for (i = 0; i < count - 1; i++) {
+        WORD *entry = (WORD *)(existing + SCMAP_HEADER_SIZE +
+                               i * SCMAP_ENTRY_SIZE);
+        if (entry[1] != SCANCODE_CAPSLOCK)
+            newCount++;
+    }
+
+    if (newCount == 1) {
+        /* No entries left: delete the Scancode Map value entirely */
+        RegDeleteValueW(hKey, L"Scancode Map");
+    } else {
+        /* Rebuild without CapsLock entry */
+        newSize = SCMAP_HEADER_SIZE + newCount * SCMAP_ENTRY_SIZE;
+        newMap = (BYTE *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, newSize);
+        if (newMap) {
+            memcpy(newMap, existing, 8);
+            *(DWORD *)(newMap + 8) = newCount;
+
+            j = 0;
+            for (i = 0; i < count - 1; i++) {
+                WORD *src = (WORD *)(existing + SCMAP_HEADER_SIZE +
+                                     i * SCMAP_ENTRY_SIZE);
+                if (src[1] != SCANCODE_CAPSLOCK) {
+                    WORD *dst = (WORD *)(newMap + SCMAP_HEADER_SIZE +
+                                         j * SCMAP_ENTRY_SIZE);
+                    dst[0] = src[0];
+                    dst[1] = src[1];
+                    j++;
+                }
+            }
+            RegSetValueExW(hKey, L"Scancode Map", 0, REG_BINARY,
+                           newMap, newSize);
+            HeapFree(GetProcessHeap(), 0, newMap);
+        }
+    }
+
+    HeapFree(GetProcessHeap(), 0, existing);
+    RegCloseKey(hKey);
+}
+
 STDAPI DllRegisterServer(void)
 {
     HRESULT hr;
@@ -107,11 +300,15 @@ STDAPI DllRegisterServer(void)
     if (SUCCEEDED(hr))
         hr = KolemakIME_RegisterCategories();
 
+    if (SUCCEEDED(hr))
+        ScancodeMap_Install();
+
     return hr;
 }
 
 STDAPI DllUnregisterServer(void)
 {
+    ScancodeMap_Uninstall();
     KolemakIME_UnregisterCategories();
     KolemakIME_UnregisterProfiles();
     KolemakIME_UnregisterServer();

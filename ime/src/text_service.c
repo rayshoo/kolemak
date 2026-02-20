@@ -257,6 +257,7 @@ static HRESULT STDMETHODCALLTYPE TS_ActivateEx(
     ts->koreanMode = FALSE;
     ts->colemakMode = TRUE;
     ts->capsLockAsBackspace = TRUE;
+    ts->capsLockOn = FALSE;
     ts->semicolonSwap = TRUE;
     ts->hotkeyVk = VK_SPACE;
     ts->hotkeyModifiers = TF_MOD_CONTROL;

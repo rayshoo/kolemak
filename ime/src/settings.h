@@ -14,5 +14,6 @@
 #define KOLEMAK_REG_SEMICOLON_SWAP   L"SemicolonSwap"
 #define KOLEMAK_REG_HOTKEY_VK        L"HotkeyVk"
 #define KOLEMAK_REG_HOTKEY_MOD       L"HotkeyModifiers"
+#define KOLEMAK_REG_CAPSLOCK_STATE   L"CapsLockState"
 
 #endif /* SETTINGS_H */

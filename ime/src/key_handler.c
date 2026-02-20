@@ -6,6 +6,7 @@
  */
 
 #include "kolemak.h"
+#include "settings.h"
 
 /* Helper: request an edit session */
 static HRESULT RequestEditSession(TextService *ts, ITfContext *ctx,
@@ -34,10 +35,39 @@ static HRESULT RequestEditSession(TextService *ts, ITfContext *ctx,
     return SUCCEEDED(hr) ? hrSession : hr;
 }
 
+/* Sync internal CapsLock state to OS thread-local state and registry */
+static void SyncCapsLockState(TextService *ts)
+{
+    BYTE ks[256];
+    HKEY hKey;
+
+    /* 1. OS thread-local state (for QWERTY passthrough mode) */
+    GetKeyboardState(ks);
+    if (ts->capsLockOn)
+        ks[VK_CAPITAL] |= 1;
+    else
+        ks[VK_CAPITAL] &= ~1;
+    SetKeyboardState(ks);
+
+    /* 2. Registry (for cross-process sync) */
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, KOLEMAK_REG_KEY,
+                      0, KEY_WRITE, &hKey) == ERROR_SUCCESS)
+    {
+        DWORD val = ts->capsLockOn ? 1 : 0;
+        RegSetValueExW(hKey, KOLEMAK_REG_CAPSLOCK_STATE, 0, REG_DWORD,
+                       (const BYTE *)&val, sizeof(DWORD));
+        RegCloseKey(hKey);
+    }
+}
+
 /* Check if a key should be eaten */
 static BOOL ShouldEatKey(TextService *ts, UINT vk, BOOL shift)
 {
-    /* CapsLock → Backspace: eat CapsLock when enabled */
+    /* Remapped CapsLock (F13): always eat regardless of mode */
+    if (vk == VK_F13)
+        return TRUE;
+
+    /* CapsLock → Backspace: eat CapsLock when enabled (pre-reboot compat) */
     if (ts->capsLockAsBackspace && vk == VK_CAPITAL)
         return TRUE;
 
@@ -145,10 +175,11 @@ static HRESULT HandleEnglishKey(TextService *ts, ITfContext *ctx,
     WCHAR ch;
     INPUT inputs[2] = {0};
 
-    (void)ts; (void)ctx;
+    (void)ctx;
 
-    /* CapsLock inverts case for letter keys */
-    if ((GetKeyState(VK_CAPITAL) & 1) && vk >= 'A' && vk <= 'Z')
+    /* CapsLock inverts case for letter keys.
+     * Include VK_OEM_1 (;) since Colemak maps it to O. */
+    if (ts->capsLockOn && ((vk >= 'A' && vk <= 'Z') || vk == VK_OEM_1))
         shift = !shift;
 
     if (!keymap_get_colemak(vk, shift, &ch))
@@ -236,47 +267,61 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
     (void)lParam;
     *pfEaten = FALSE;
 
-    /* CapsLock → Backspace handling.
-     * Windows toggles CapsLock state BEFORE TSF sees the key,
-     * so we undo the toggle via SetKeyboardState (direct state
-     * manipulation avoids synthetic key events that TSF intercepts). */
-    if (ts->capsLockAsBackspace && vk == VK_CAPITAL) {
-        if (shift) {
-            /* Shift+CapsLock: actual CapsLock toggle.
-             * Windows already toggled it, so just let it be. */
-        } else {
-            /* Undo the CapsLock toggle that Windows already applied */
-            {
-                BYTE ks[256];
-                GetKeyboardState(ks);
-                ks[VK_CAPITAL] ^= 1;
-                SetKeyboardState(ks);
-            }
+    /* CapsLock handling: VK_F13 (remapped via Scancode Map) or
+     * VK_CAPITAL (pre-reboot / no scancode map fallback) */
+    if (vk == VK_F13 || (ts->capsLockAsBackspace && vk == VK_CAPITAL)) {
+        /* VK_CAPITAL (pre-reboot): OS already toggled CapsLock, undo it */
+        if (vk == VK_CAPITAL) {
+            BYTE ks[256];
+            GetKeyboardState(ks);
+            ks[VK_CAPITAL] ^= 1;
+            SetKeyboardState(ks);
+        }
 
-            if (ts->hangulCtx.state != HANGUL_STATE_EMPTY) {
-                /* CapsLock during composition: hangul backspace */
-                HangulResult result = hangul_ic_backspace(&ts->hangulCtx);
-                EditSession *es = NULL;
-
-                if (result.type == HANGUL_RESULT_COMPOSING) {
-                    hr = EditSession_Create(ts, pic, ES_HANDLE_RESULT, &es);
-                    if (SUCCEEDED(hr)) {
-                        es->data.hangulResult = result;
-                        RequestEditSession(ts, pic, ES_HANDLE_RESULT, es);
-                        es->lpVtbl->Release((ITfEditSession *)es);
-                    }
-                } else if (result.type == HANGUL_RESULT_COMMIT_FLUSH) {
-                    hr = EditSession_Create(ts, pic, ES_CANCEL_COMPOSITION, &es);
-                    if (SUCCEEDED(hr)) {
-                        RequestEditSession(ts, pic, ES_CANCEL_COMPOSITION, es);
-                        es->lpVtbl->Release((ITfEditSession *)es);
-                    }
-                }
+        if (ts->capsLockAsBackspace) {
+            if (shift) {
+                /* Shift+CapsLock: actual CapsLock toggle */
+                ts->capsLockOn = !ts->capsLockOn;
+                SyncCapsLockState(ts);
             } else {
-                /* CapsLock outside composition: send Backspace */
-                keybd_event(VK_BACK, 0, 0, 0);
-                keybd_event(VK_BACK, 0, KEYEVENTF_KEYUP, 0);
+                /* Backspace */
+                if (ts->hangulCtx.state != HANGUL_STATE_EMPTY) {
+                    HangulResult result = hangul_ic_backspace(&ts->hangulCtx);
+                    EditSession *es = NULL;
+
+                    if (result.type == HANGUL_RESULT_COMPOSING) {
+                        hr = EditSession_Create(ts, pic, ES_HANDLE_RESULT, &es);
+                        if (SUCCEEDED(hr)) {
+                            es->data.hangulResult = result;
+                            RequestEditSession(ts, pic, ES_HANDLE_RESULT, es);
+                            es->lpVtbl->Release((ITfEditSession *)es);
+                        }
+                    } else if (result.type == HANGUL_RESULT_COMMIT_FLUSH) {
+                        hr = EditSession_Create(ts, pic, ES_CANCEL_COMPOSITION, &es);
+                        if (SUCCEEDED(hr)) {
+                            RequestEditSession(ts, pic, ES_CANCEL_COMPOSITION, es);
+                            es->lpVtbl->Release((ITfEditSession *)es);
+                        }
+                    }
+                } else {
+                    INPUT bkInputs[2];
+                    memset(bkInputs, 0, sizeof(bkInputs));
+                    bkInputs[0].type = INPUT_KEYBOARD;
+                    bkInputs[0].ki.wVk = VK_BACK;
+                    bkInputs[0].ki.wScan =
+                        (WORD)MapVirtualKey(VK_BACK, MAPVK_VK_TO_VSC);
+                    bkInputs[1].type = INPUT_KEYBOARD;
+                    bkInputs[1].ki.wVk = VK_BACK;
+                    bkInputs[1].ki.wScan =
+                        (WORD)MapVirtualKey(VK_BACK, MAPVK_VK_TO_VSC);
+                    bkInputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+                    SendInput(2, bkInputs, sizeof(INPUT));
+                }
             }
+        } else {
+            /* capsLockAsBackspace=FALSE: CapsLock toggle */
+            ts->capsLockOn = !ts->capsLockOn;
+            SyncCapsLockState(ts);
         }
         *pfEaten = TRUE;
         return S_OK;
@@ -379,8 +424,10 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
         hr = HandleKoreanKey(ts, pic, vk, shift);
         /* If Korean handler didn't consume the key (e.g. VK_P with
          * semicolonSwap) and we're in Colemak mode, fall through to
-         * English handler for Colemak character remapping (e.g. P→;) */
-        if (hr == S_FALSE && ts->colemakMode)
+         * English handler for Colemak character remapping (e.g. P→;).
+         * Only for letter keys — VK_OEM_1 should pass through as ';'
+         * when semicolonSwap is off, not be remapped to 'O'. */
+        if (hr == S_FALSE && ts->colemakMode && vk >= 'A' && vk <= 'Z')
             hr = HandleEnglishKey(ts, pic, vk, shift);
     } else if (ts->colemakMode) {
         hr = HandleEnglishKey(ts, pic, vk, shift);
