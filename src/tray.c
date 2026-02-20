@@ -10,6 +10,7 @@
 #include <shellapi.h>
 #include "tray.h"
 #include "settings.h"
+#include "resource.h"
 
 /* ===== Constants ===== */
 
@@ -478,7 +479,7 @@ static BOOL CreateTrayIcon(HWND hwnd)
     nid.uID = TRAY_ICON_ID;
     nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     nid.uCallbackMessage = WM_TRAYICON;
-    nid.hIcon = LoadIconW(NULL, IDI_APPLICATION);
+    nid.hIcon = LoadIconW(g_hInst, MAKEINTRESOURCEW(IDI_KOLEMAK));
     lstrcpyW(nid.szTip, L"Kolemak IME");
 
     return Shell_NotifyIconW(NIM_ADD, &nid);

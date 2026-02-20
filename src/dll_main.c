@@ -3,6 +3,7 @@
  */
 
 #include "kolemak.h"
+#include "resource.h"
 #include <shlwapi.h>
 
 /* ===== Class Factory ===== */
@@ -412,7 +413,7 @@ HRESULT KolemakIME_RegisterProfiles(void)
             KOLEMAK_DESC_LEN,
             szModule,
             lstrlenW(szModule),
-            0,      /* icon index */
+            (ULONG)(-(int)IDI_KOLEMAK),  /* icon resource ID */
             NULL,   /* hklSubstitute */
             0,      /* dwPreferredLayout */
             TRUE,   /* bEnabledByDefault */

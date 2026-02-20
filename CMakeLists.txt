@@ -24,6 +24,9 @@ add_library(kolemak SHARED ${SOURCES})
 # Module definition file for DLL exports
 target_sources(kolemak PRIVATE src/kolemak.def)
 
+# Resource file (icon)
+target_sources(kolemak PRIVATE src/kolemak.rc)
+
 # Include directories
 target_include_directories(kolemak PRIVATE src)
 
