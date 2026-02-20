@@ -100,7 +100,7 @@ make --version
 
 ```bash
 git clone https://github.com/rayshoo/kolemak.git
-cd colemak_korean
+cd kolemak
 ```
 
 ---
