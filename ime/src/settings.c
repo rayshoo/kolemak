@@ -47,6 +47,9 @@ BOOL Settings_Load(TextService *ts)
     if (ReadRegDWORD(hKey, KOLEMAK_REG_HOTKEY_MOD, &val))
         ts->hotkeyModifiers = val;
 
+    if (ReadRegDWORD(hKey, KOLEMAK_REG_CAPSLOCK_STATE, &val))
+        ts->capsLockOn = (val != 0);
+
     RegCloseKey(hKey);
     return TRUE;
 }
@@ -66,6 +69,7 @@ void Settings_Save(TextService *ts)
     WriteRegDWORD(hKey, KOLEMAK_REG_SEMICOLON_SWAP, ts->semicolonSwap ? 1 : 0);
     WriteRegDWORD(hKey, KOLEMAK_REG_HOTKEY_VK, ts->hotkeyVk);
     WriteRegDWORD(hKey, KOLEMAK_REG_HOTKEY_MOD, ts->hotkeyModifiers);
+    WriteRegDWORD(hKey, KOLEMAK_REG_CAPSLOCK_STATE, ts->capsLockOn ? 1 : 0);
 
     RegCloseKey(hKey);
 }
@@ -86,6 +90,9 @@ void Settings_ReloadPrefs(TextService *ts)
 
     if (ReadRegDWORD(hKey, KOLEMAK_REG_SEMICOLON_SWAP, &val))
         ts->semicolonSwap = (val != 0);
+
+    if (ReadRegDWORD(hKey, KOLEMAK_REG_CAPSLOCK_STATE, &val))
+        ts->capsLockOn = (val != 0);
 
     RegCloseKey(hKey);
 }
