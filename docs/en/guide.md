@@ -24,7 +24,9 @@ Download `kolemak-install.exe` from the [Releases](https://github.com/rayshoo/ko
 
 1. Run the installer (requires administrator privileges)
 2. **Reboot** after installation (to apply CapsLock key remapping)
-3. Go to **Windows Settings > Time & Language > Language & Region > Korean > Keyboard** and select "Kolemak IME"
+3. Go to **Settings > Time & Language > Language & Region > Korean > Language options > Keyboard**:
+   - **Add a keyboard** → select "Kolemak IME"
+   - **Remove** Microsoft IME (recommended — allows direct use without switching input methods)
 
 ### Uninstallation
 
