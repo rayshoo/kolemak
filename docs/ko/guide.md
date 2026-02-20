@@ -8,7 +8,7 @@ Windows에서 두벌식 한글 입력을 지원하는 Colemak 자판 입력기�
 - **Colemak 영문 + 두벌식 한글** — 한/영 전환: `한글 키` 또는 `우측 Alt`
 - **Colemak / QWERTY 즉시 전환** — `Ctrl+Space`로 전환, 다른 사용자와 컴퓨터를 공유할 때 편리합니다
 - **CapsLock → Backspace** — CapsLock이 Backspace로 동작, `Shift+CapsLock`으로 실제 CapsLock 토글
-- **Language Bar 통합** — 작업 표시줄 언어 영역에 현재 모드("한" / "CM" / "QW") 표시
+- **Language Bar 통합** — 작업 표시줄 언어 영역에서 우클릭 메뉴로 Colemak 모드, CapsLock 설정 전환
 - **시스템 트레이 설정** — 트레이 아이콘 우클릭으로 설정 변경 (CapsLock 동작, ㅔ 키 위치, 전환 단축키)
 - **설정 자동 저장** — 모든 설정이 레지스트리에 저장되어 재시작 후에도 유지
 

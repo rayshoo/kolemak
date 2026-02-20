@@ -8,7 +8,7 @@ A Colemak keyboard layout input method for Windows with native Korean (Dubeolsik
 - **Colemak English + Dubeolsik Korean** — Toggle Korean/English with `Hangul key` or `Right Alt`
 - **Instant Colemak / QWERTY toggle** — Press `Ctrl+Space` to switch, convenient when sharing your machine with others
 - **CapsLock as Backspace** — CapsLock acts as Backspace, `Shift+CapsLock` toggles actual CapsLock
-- **Language Bar integration** — Shows current mode ("한" / "CM" / "QW") in the taskbar language area
+- **Language Bar integration** — Right-click menu in the taskbar language area for toggling Colemak mode and CapsLock settings
 - **System tray settings** — Right-click the tray icon to configure CapsLock behavior, ㅔ key position, and toggle hotkey
 - **Persistent settings** — All preferences are saved to registry and persist across restarts
 
