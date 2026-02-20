@@ -9,5 +9,6 @@
 
 HRESULT KolemakTray_Register(TextService *ts);
 void    KolemakTray_Unregister(TextService *ts);
+void    KolemakTray_EnsureIcon(TextService *ts);
 
 #endif /* TRAY_H */

@@ -347,6 +347,7 @@ static HRESULT STDMETHODCALLTYPE TMES_OnSetFocus(
     TextService *ts = TS_FROM_THREAD_MGR_SINK(pThis);
     (void)pdimFocus; (void)pdimPrevFocus;
     Settings_ReloadPrefs(ts);
+    KolemakTray_EnsureIcon(ts);
     return S_OK;
 }
 

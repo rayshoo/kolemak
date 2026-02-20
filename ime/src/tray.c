@@ -33,9 +33,11 @@
 
 static HANDLE g_trayMutex = NULL;
 static HWND   g_trayWnd = NULL;
+static HWND   g_settingsWnd = NULL;
 static BOOL   g_trayClassRegistered = FALSE;
 static BOOL   g_settingsClassRegistered = FALSE;
 static TextService *g_trayTs = NULL;
+static UINT   g_wmTaskbarCreated = 0;
 
 /* ===== Hotkey display helpers ===== */
 
@@ -261,6 +263,20 @@ static void ShowSettingsDialog(void)
 
     if (!ts) return;
 
+    /* If already open, bring to front and center */
+    if (g_settingsWnd && IsWindow(g_settingsWnd)) {
+        RECT rc;
+        int sw = GetSystemMetrics(SM_CXSCREEN);
+        int sh = GetSystemMetrics(SM_CYSCREEN);
+        GetWindowRect(g_settingsWnd, &rc);
+        SetWindowPos(g_settingsWnd, HWND_TOP,
+                     (sw - (rc.right - rc.left)) / 2,
+                     (sh - (rc.bottom - rc.top)) / 2,
+                     0, 0, SWP_NOSIZE);
+        SetForegroundWindow(g_settingsWnd);
+        return;
+    }
+
     /* Get system DPI for scaling */
     {
         HDC hdc = GetDC(NULL);
@@ -295,6 +311,7 @@ static void ShowSettingsDialog(void)
         NULL, NULL, g_hInst, &sd);
 
     if (!hwnd) return;
+    g_settingsWnd = hwnd;
 
     /* Center on screen */
     {
@@ -386,10 +403,13 @@ static void ShowSettingsDialog(void)
     }
 
     DestroyWindow(hwnd);
+    g_settingsWnd = NULL;
     DeleteObject(sd.hFont);
 }
 
 /* ===== Tray Icon ===== */
+
+static BOOL CreateTrayIcon(HWND hwnd);
 
 static void ShowTrayContextMenu(HWND hwnd)
 {
@@ -420,6 +440,12 @@ static void ShowTrayContextMenu(HWND hwnd)
 static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT msg,
                                      WPARAM wParam, LPARAM lParam)
 {
+    /* Re-create tray icon when Explorer restarts */
+    if (msg == g_wmTaskbarCreated && g_wmTaskbarCreated != 0) {
+        CreateTrayIcon(hwnd);
+        return 0;
+    }
+
     switch (msg) {
 
     case WM_TRAYICON:
@@ -501,6 +527,9 @@ HRESULT KolemakTray_Register(TextService *ts)
         return E_FAIL;
     }
 
+    /* Register for Explorer restart notification */
+    g_wmTaskbarCreated = RegisterWindowMessageW(L"TaskbarCreated");
+
     CreateTrayIcon(g_trayWnd);
     return S_OK;
 }
@@ -521,4 +550,53 @@ void KolemakTray_Unregister(TextService *ts)
     }
 
     g_trayTs = NULL;
+}
+
+void KolemakTray_EnsureIcon(TextService *ts)
+{
+    /* Already owns the tray icon */
+    if (g_trayWnd)
+        return;
+
+    /* Try to acquire the mutex (non-blocking) */
+    g_trayMutex = CreateMutexW(NULL, TRUE, TRAY_MUTEX_NAME);
+    if (!g_trayMutex || GetLastError() == ERROR_ALREADY_EXISTS) {
+        if (g_trayMutex) {
+            CloseHandle(g_trayMutex);
+            g_trayMutex = NULL;
+        }
+        return; /* Another process still owns it */
+    }
+
+    g_trayTs = ts;
+
+    if (!g_trayClassRegistered) {
+        WNDCLASSEXW wc = {0};
+        wc.cbSize = sizeof(wc);
+        wc.lpfnWndProc = TrayWndProc;
+        wc.hInstance = g_hInst;
+        wc.lpszClassName = TRAY_WND_CLASS;
+        if (RegisterClassExW(&wc))
+            g_trayClassRegistered = TRUE;
+    }
+
+    if (!g_trayClassRegistered) {
+        ReleaseMutex(g_trayMutex);
+        CloseHandle(g_trayMutex);
+        g_trayMutex = NULL;
+        return;
+    }
+
+    g_trayWnd = CreateWindowExW(0, TRAY_WND_CLASS, L"KolemakTray",
+                                 0, 0, 0, 0, 0,
+                                 HWND_MESSAGE, NULL, g_hInst, NULL);
+    if (!g_trayWnd) {
+        ReleaseMutex(g_trayMutex);
+        CloseHandle(g_trayMutex);
+        g_trayMutex = NULL;
+        return;
+    }
+
+    g_wmTaskbarCreated = RegisterWindowMessageW(L"TaskbarCreated");
+    CreateTrayIcon(g_trayWnd);
 }

@@ -136,6 +136,7 @@ void Settings_ReloadPrefs(TextService *ts);
 /* ===== System Tray (tray.c) ===== */
 HRESULT KolemakTray_Register(TextService *ts);
 void    KolemakTray_Unregister(TextService *ts);
+void    KolemakTray_EnsureIcon(TextService *ts);
 
 /* ===== Language Bar (langbar.c) ===== */
 HRESULT LangBarButton_Create(TextService *ts, LangBarButton **ppButton);
