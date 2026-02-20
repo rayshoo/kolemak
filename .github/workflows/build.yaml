@@ -1,4 +1,4 @@
-name: build-ahk
+name: build
 
 on:
   push:
@@ -6,7 +6,40 @@ on:
       - 'v*'
 
 jobs:
-  build:
+  build-ime:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Extract version from tag
+      id: version
+      shell: bash
+      run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+    - name: Build x64 DLL
+      shell: pwsh
+      run: |
+        cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DVERSION_OVERRIDE=${{ steps.version.outputs.version }}
+        cmake --build build --config Release
+
+    - name: Build x86 DLL
+      shell: pwsh
+      run: |
+        cmake -S . -B build32 -G "Visual Studio 17 2022" -A Win32 -DVERSION_OVERRIDE=${{ steps.version.outputs.version }}
+        cmake --build build32 --config Release
+
+    - name: Build installer with Inno Setup
+      shell: pwsh
+      run: |
+        iscc /DAppVer=${{ steps.version.outputs.version }} installer/kolemak.iss
+
+    - name: Upload IME artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ime-installer
+        path: dist/kolemak-install.exe
+
+  build-ahk:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
@@ -28,28 +61,40 @@ jobs:
       shell: pwsh
       run: New-Item -ItemType Directory -Force -Path dist | Out-Null
 
-    - name: Compile changed.ahk
+    - name: Compile kolemak.ahk
       shell: pwsh
       run: |
-        Start-Process -FilePath "$env:TEMP\ahk-v2\Compiler\Ahk2Exe.exe" -ArgumentList "/in","portable\changed.ahk","/out","dist\kolemak-changed.exe","/icon","assets\icon.ico","/base","$env:TEMP\ahk-v2\AutoHotkey64.exe" -Wait -NoNewWindow
-        if (!(Test-Path dist\kolemak-changed.exe)) { throw "Compilation failed for changed.ahk" }
+        Start-Process -FilePath "$env:TEMP\ahk-v2\Compiler\Ahk2Exe.exe" -ArgumentList "/in","portable\kolemak.ahk","/out","dist\kolemak-portable.exe","/icon","assets\portable-icon.ico","/base","$env:TEMP\ahk-v2\AutoHotkey64.exe" -Wait -NoNewWindow
+        if (!(Test-Path dist\kolemak-portable.exe)) { throw "Compilation failed for kolemak.ahk" }
 
-    - name: Compile unchanged.ahk
-      shell: pwsh
-      run: |
-        Start-Process -FilePath "$env:TEMP\ahk-v2\Compiler\Ahk2Exe.exe" -ArgumentList "/in","portable\unchanged.ahk","/out","dist\kolemak-unchanged.exe","/icon","assets\icon.ico","/base","$env:TEMP\ahk-v2\AutoHotkey64.exe" -Wait -NoNewWindow
-        if (!(Test-Path dist\kolemak-unchanged.exe)) { throw "Compilation failed for unchanged.ahk" }
-
-    - name: Upload artifact
+    - name: Upload AHK artifact
       uses: actions/upload-artifact@v4
       with:
         name: ahk-exe
         path: dist/*.exe
+
+  release:
+    needs: [build-ime, build-ahk]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - name: Download IME artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: ime-installer
+        path: dist
+
+    - name: Download AHK artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: ahk-exe
+        path: dist
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
         generate_release_notes: true
         files: |
-          dist/kolemak-changed.exe
-          dist/kolemak-unchanged.exe
+          dist/kolemak-install.exe
+          dist/kolemak-portable.exe

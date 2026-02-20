@@ -12,6 +12,11 @@
 #include "settings.h"
 #include "resource.h"
 
+/* ===== Version string helpers ===== */
+
+#define _KOLEMAK_VER_W(x) L##x
+#define KOLEMAK_VER_W(x) _KOLEMAK_VER_W(x)
+
 /* ===== Constants ===== */
 
 #define TRAY_WND_CLASS      L"KolemakTrayWnd"
@@ -306,7 +311,7 @@ static void ShowSettingsDialog(void)
     hwnd = CreateWindowExW(
         WS_EX_DLGMODALFRAME | WS_EX_TOPMOST,
         SETTINGS_WND_CLASS,
-        L"Kolemak \xC124\xC815",  /* Kolemak 설정 */
+        L"Kolemak v" KOLEMAK_VER_W(KOLEMAK_VERSION) L" \xC124\xC815",  /* Kolemak v{VERSION} 설정 */
         WS_POPUP | WS_CAPTION | WS_SYSMENU,
         0, 0, D(350), D(240),
         NULL, NULL, g_hInst, &sd);
@@ -480,7 +485,7 @@ static BOOL CreateTrayIcon(HWND hwnd)
     nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     nid.uCallbackMessage = WM_TRAYICON;
     nid.hIcon = LoadIconW(g_hInst, MAKEINTRESOURCEW(IDI_KOLEMAK));
-    lstrcpyW(nid.szTip, L"Kolemak IME");
+    lstrcpyW(nid.szTip, L"Kolemak IME v" KOLEMAK_VER_W(KOLEMAK_VERSION));
 
     return Shell_NotifyIconW(NIM_ADD, &nid);
 }

@@ -1,16 +1,74 @@
-;Created by rayshoo / github.com/rayshoo
+﻿;Created by rayshoo / github.com/rayshoo
 #Requires AutoHotkey v2.0
 SendMode("Input")
 InstallKeybdHook()
 
-TraySetIcon("main.cpl", 8)
+; ============================================================
+; Settings
+; ============================================================
 
-SXCoordinate := IniRead("Data\Save.ini", "Coordinate", "SXCoordinate", "0")
-SYCoordinate := IniRead("Data\Save.ini", "Coordinate", "SYCoordinate", "0")
+IniFile := A_ScriptDir "\Data\Save.ini"
+
+SXCoordinate := IniRead(IniFile, "Coordinate", "SXCoordinate", "0")
+SYCoordinate := IniRead(IniFile, "Coordinate", "SYCoordinate", "0")
 CoordMode("ToolTip", "Screen")
+
+CapsLockRemap := IniRead(IniFile, "Settings", "CapsLockRemap", "1") = "1"
+SemicolonSwap := IniRead(IniFile, "Settings", "SemicolonSwap", "1") = "1"
 
 Colemak := true
 SetTimer(AlertColemak, -1)
+
+; ============================================================
+; Tray Menu
+; ============================================================
+
+if FileExist(A_ScriptDir "\..\assets\portable-icon.ico")
+	TraySetIcon(A_ScriptDir "\..\assets\portable-icon.ico")
+else if (A_IsCompiled)
+	TraySetIcon(A_ScriptFullPath)
+else
+	TraySetIcon("main.cpl", 8)
+A_IconTip := "Kolemak Portable"
+
+A_TrayMenu.Delete()
+A_TrayMenu.Add("CapsLock to Backspace", ToggleCapsLockRemap)
+A_TrayMenu.Add("Semicolon Swap", ToggleSemicolonSwap)
+A_TrayMenu.Add()
+A_TrayMenu.AddStandard()
+
+if (CapsLockRemap)
+	A_TrayMenu.Check("CapsLock to Backspace")
+if (SemicolonSwap)
+	A_TrayMenu.Check("Semicolon Swap")
+
+ToggleCapsLockRemap(*) {
+	global CapsLockRemap, IniFile
+	CapsLockRemap := !CapsLockRemap
+	if (CapsLockRemap)
+		A_TrayMenu.Check("CapsLock to Backspace")
+	else
+		A_TrayMenu.Uncheck("CapsLock to Backspace")
+	SaveSetting("CapsLockRemap", CapsLockRemap ? "1" : "0")
+}
+
+ToggleSemicolonSwap(*) {
+	global SemicolonSwap, IniFile
+	SemicolonSwap := !SemicolonSwap
+	if (SemicolonSwap)
+		A_TrayMenu.Check("Semicolon Swap")
+	else
+		A_TrayMenu.Uncheck("Semicolon Swap")
+	SaveSetting("SemicolonSwap", SemicolonSwap ? "1" : "0")
+}
+
+SaveSetting(key, value) {
+	global IniFile
+	dir := A_ScriptDir "\Data"
+	if !DirExist(dir)
+		DirCreate(dir)
+	IniWrite(value, IniFile, "Settings", key)
+}
 
 ; ============================================================
 ; Hotkey Definitions
@@ -93,9 +151,11 @@ o::OnKey("y", "o", false)
 ^!o::OnModKey("^!", "y")
 ^!+o::OnModKey("^!+", "y")
 
-; QWERTY p -> Colemak ; (SC027) | Korean: p (unchanged - keep ㅔ in place)
-p::OnPKey(false)
-+p::OnPKey(true)
+; QWERTY p -> Colemak ; (SC027)
+; SemicolonSwap ON:  always SC027 (ㅔ도 ; 위치로 이동)
+; SemicolonSwap OFF: English SC027, Korean p (ㅔ 원래 자리)
+p::HandlePKey(false)
++p::HandlePKey(true)
 ^p::OnModKey("^", "{SC027}")
 !p::OnModKey("!", "{SC027}")
 #p::OnModKey("#", "{SC027}")
@@ -181,9 +241,11 @@ l::OnKey("i", "l", false)
 ^!l::OnModKey("^!", "i")
 ^!+l::OnModKey("^!+", "i")
 
-; QWERTY ; (SC027) -> Colemak o | Korean: SC027 (unchanged - keep ; in place)
-SC027::OnSC027Key(false)
-+SC027::OnSC027Key(true)
+; QWERTY ; (SC027) -> Colemak o
+; SemicolonSwap ON:  English o, Korean p (ㅔ가 여기로 이동)
+; SemicolonSwap OFF: English o, Korean SC027 (; 원래 자리)
+SC027::HandleSC027Key(false)
++SC027::HandleSC027Key(true)
 ^SC027::OnModKey("^", "o")
 !SC027::OnModKey("!", "o")
 #SC027::OnModKey("#", "o")
@@ -207,7 +269,7 @@ n::OnKey("k", "n", false)
 #m::#m
 
 ; ============================================================
-; Win+Space toggle
+; Win+Space toggle (Colemak <-> QWERTY)
 ; ============================================================
 
 #SuspendExempt
@@ -229,9 +291,10 @@ n::OnKey("k", "n", false)
 #SuspendExempt false
 
 ; ============================================================
-; CapsLock remapping
+; CapsLock remapping (conditional)
 ; ============================================================
 
+#HotIf CapsLockRemap
 CapsLock::BackSpace
 +CapsLock::CapsLock
 !CapsLock:: {
@@ -258,6 +321,7 @@ CapsLock::BackSpace
 	SetStoreCapsLockMode("Off")
 	Send("^!+{CapsLock}")
 }
+#HotIf
 
 ; ============================================================
 ; Tooltip Functions
@@ -332,9 +396,10 @@ OnModKey(mod, colemakKey) {
 	Suspend(false)
 }
 
-OnPKey(isShifted) {
-	ret := IME_CHECK("A")
-	if (ret = 0) {
+HandlePKey(isShifted) {
+	global SemicolonSwap
+	if (SemicolonSwap) {
+		; ㅔ도 ; 위치로 이동: always send SC027
 		Suspend(true)
 		if (isShifted)
 			Send("+{SC027}")
@@ -342,30 +407,43 @@ OnPKey(isShifted) {
 			Send("{SC027}")
 		Suspend(false)
 	} else {
-		Suspend(true)
-		capsOn := GetKeyState("CapsLock", "T")
-		if (isShifted) {
-			if (capsOn) {
-				SetKeyDelay(-1)
-				Send("{Blind}+p")
-			} else {
-				Send("+p")
-			}
+		; ㅔ 원래 자리: English → SC027, Korean → p
+		ret := IME_CHECK("A")
+		if (ret = 0) {
+			Suspend(true)
+			if (isShifted)
+				Send("+{SC027}")
+			else
+				Send("{SC027}")
+			Suspend(false)
 		} else {
-			if (capsOn) {
-				SetKeyDelay(-1)
-				Send("{Blind}p")
+			Suspend(true)
+			capsOn := GetKeyState("CapsLock", "T")
+			if (isShifted) {
+				if (capsOn) {
+					SetKeyDelay(-1)
+					Send("{Blind}+p")
+				} else {
+					Send("+p")
+				}
 			} else {
-				Send("p")
+				if (capsOn) {
+					SetKeyDelay(-1)
+					Send("{Blind}p")
+				} else {
+					Send("p")
+				}
 			}
+			Suspend(false)
 		}
-		Suspend(false)
 	}
 }
 
-OnSC027Key(isShifted) {
+HandleSC027Key(isShifted) {
+	global SemicolonSwap
 	ret := IME_CHECK("A")
 	if (ret = 0) {
+		; English: always "o"
 		Suspend(true)
 		capsOn := GetKeyState("CapsLock", "T")
 		if (isShifted) {
@@ -381,12 +459,35 @@ OnSC027Key(isShifted) {
 		}
 		Suspend(false)
 	} else {
-		Suspend(true)
-		if (isShifted)
-			Send("+{SC027}")
-		else
-			Send("{SC027}")
-		Suspend(false)
+		if (SemicolonSwap) {
+			; ㅔ가 여기로 이동: Korean → send p (ㅔ)
+			Suspend(true)
+			capsOn := GetKeyState("CapsLock", "T")
+			if (isShifted) {
+				if (capsOn) {
+					SetKeyDelay(-1)
+					Send("{Blind}+p")
+				} else {
+					Send("+p")
+				}
+			} else {
+				if (capsOn) {
+					SetKeyDelay(-1)
+					Send("{Blind}p")
+				} else {
+					Send("p")
+				}
+			}
+			Suspend(false)
+		} else {
+			; ; 원래 자리: Korean → send SC027
+			Suspend(true)
+			if (isShifted)
+				Send("+{SC027}")
+			else
+				Send("{SC027}")
+			Suspend(false)
+		}
 	}
 }
 
