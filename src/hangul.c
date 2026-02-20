@@ -144,6 +144,19 @@ static const WCHAR g_compat_jung[21] = {
     0x3163,                                    /* ㅣ */
 };
 
+static const WCHAR g_compat_jong[28] = {
+    0,      /* (none)(0)  */
+    0x3131, /* ㄱ(1)   */  0x3132, /* ㄲ(2)   */  0x3133, /* ㄳ(3)   */
+    0x3134, /* ㄴ(4)   */  0x3135, /* ㄵ(5)   */  0x3136, /* ㄶ(6)   */
+    0x3137, /* ㄷ(7)   */  0x3139, /* ㄹ(8)   */  0x313A, /* ㄺ(9)   */
+    0x313B, /* ㄻ(10)  */  0x313C, /* ㄼ(11)  */  0x313D, /* ㄽ(12)  */
+    0x313E, /* ㄾ(13)  */  0x313F, /* ㄿ(14)  */  0x3140, /* ㅀ(15)  */
+    0x3141, /* ㅁ(16)  */  0x3142, /* ㅂ(17)  */  0x3144, /* ㅄ(18)  */
+    0x3145, /* ㅅ(19)  */  0x3146, /* ㅆ(20)  */  0x3147, /* ㅇ(21)  */
+    0x3148, /* ㅈ(22)  */  0x314A, /* ㅊ(23)  */  0x314B, /* ㅋ(24)  */
+    0x314C, /* ㅌ(25)  */  0x314D, /* ㅍ(26)  */  0x314E, /* ㅎ(27)  */
+};
+
 /* ===== Helper functions ===== */
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
@@ -216,6 +229,8 @@ static WCHAR compose_display(HangulContext *ctx)
 {
     switch (ctx->state) {
     case HANGUL_STATE_CHOSEONG:
+        if (ctx->jong > 0)
+            return g_compat_jong[ctx->jong];
         return hangul_jamo_to_compat(ctx->cho, -1);
     case HANGUL_STATE_JUNGSEONG:
         return hangul_syllable(ctx->cho, ctx->jung, 0);
@@ -283,15 +298,55 @@ HangulResult hangul_ic_process(HangulContext *ctx, int cho_index, int jung_index
 
     case HANGUL_STATE_CHOSEONG:
         if (is_vowel) {
+            if (ctx->jong > 0) {
+                /* 복합 자음 분해: 첫째 커밋, 둘째가 새 초성 */
+                int remain_jong, new_cho;
+                WCHAR committed;
+                try_decompose_jong(ctx->jong, &remain_jong, &new_cho);
+                committed = g_compat_jong[remain_jong];
+                ctx->cho = new_cho;
+                ctx->jung = jung_index;
+                ctx->jong = 0;
+                ctx->state = HANGUL_STATE_JUNGSEONG;
+                return make_result(HANGUL_RESULT_COMMIT, committed, 0, compose_display(ctx));
+            }
             ctx->jung = jung_index;
             ctx->jong = 0;
             ctx->state = HANGUL_STATE_JUNGSEONG;
             return make_result(HANGUL_RESULT_COMPOSING, 0, 0, compose_display(ctx));
         } else {
-            /* Another consonant: commit current cho as jamo, start new */
-            WCHAR committed = hangul_jamo_to_compat(ctx->cho, -1);
-            ctx->cho = cho_index;
-            return make_result(HANGUL_RESULT_COMMIT, committed, 0, compose_display(ctx));
+            /* 자음 조합 시도 */
+            if (ctx->jong > 0) {
+                /* 이미 복합 상태: 추가 조합 시도 */
+                int combined = try_combine_jong(ctx->jong, cho_index);
+                if (combined >= 0) {
+                    ctx->jong = combined;
+                    return make_result(HANGUL_RESULT_COMPOSING, 0, 0, compose_display(ctx));
+                }
+                /* 조합 불가: 복합 자음 커밋, 새 초성 시작 */
+                {
+                    WCHAR committed = g_compat_jong[ctx->jong];
+                    ctx->cho = cho_index;
+                    ctx->jong = 0;
+                    return make_result(HANGUL_RESULT_COMMIT, committed, 0, compose_display(ctx));
+                }
+            }
+            {
+                int jong_idx = g_cho_to_jong[ctx->cho];
+                if (jong_idx >= 0) {
+                    int combined = try_combine_jong(jong_idx, cho_index);
+                    if (combined >= 0) {
+                        ctx->jong = combined;
+                        return make_result(HANGUL_RESULT_COMPOSING, 0, 0, compose_display(ctx));
+                    }
+                }
+            }
+            /* 조합 불가: 현재 초성 커밋, 새 초성 시작 */
+            {
+                WCHAR committed = hangul_jamo_to_compat(ctx->cho, -1);
+                ctx->cho = cho_index;
+                return make_result(HANGUL_RESULT_COMMIT, committed, 0, compose_display(ctx));
+            }
         }
 
     case HANGUL_STATE_JUNGSEONG:
@@ -393,6 +448,12 @@ HangulResult hangul_ic_backspace(HangulContext *ctx)
         return make_result(HANGUL_RESULT_COMPOSING, 0, 0, compose_display(ctx));
 
     case HANGUL_STATE_CHOSEONG:
+        if (ctx->jong > 0) {
+            /* 복합 자음: 마지막 자음 제거 */
+            ctx->jong = 0;
+            /* ctx->cho는 이미 첫 번째 자음의 cho 인덱스 */
+            return make_result(HANGUL_RESULT_COMPOSING, 0, 0, compose_display(ctx));
+        }
         hangul_ic_reset(ctx);
         /* Return COMMIT_FLUSH with no chars = cancel composition */
         return make_result(HANGUL_RESULT_COMMIT_FLUSH, 0, 0, 0);
