@@ -99,7 +99,7 @@ make --version
 ## 2. 소스 코드 받기
 
 ```bash
-git clone https://github.com/rayshoo/colemak_korean.git
+git clone https://github.com/rayshoo/kolemak.git
 cd colemak_korean
 ```
 

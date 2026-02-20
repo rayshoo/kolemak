@@ -20,7 +20,7 @@ Windows에서 두벌식 한글 입력을 지원하는 Colemak 자판 입력기�
 
 ### 인스톨러 사용 (권장)
 
-[Releases](https://github.com/rayshoo/colemak_korean/releases) 페이지에서 `kolemak-install.exe`를 다운로드하고 실행합니다.
+[Releases](https://github.com/rayshoo/kolemak/releases) 페이지에서 `kolemak-install.exe`를 다운로드하고 실행합니다.
 
 1. 인스톨러를 실행합니다 (관리자 권한 필요)
 2. 설치 완료 후 **재부팅**합니다 (CapsLock 키 리매핑 적용)
@@ -116,7 +116,7 @@ Colemak 모드에서 다음 QWERTY 키가 재매핑됩니다. 그 외의 키는 
 
 ### 포터블 버전 다운로드
 
-[Releases](https://github.com/rayshoo/colemak_korean/releases) 페이지에서 다운로드합니다:
+[Releases](https://github.com/rayshoo/kolemak/releases) 페이지에서 다운로드합니다:
 - `kolemak-changed.exe` — ㅔ 키가 P 키 위치로 이동
 - `kolemak-unchanged.exe` — ㅔ 키가 원래 ; 키에 유지
 
