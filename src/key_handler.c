@@ -124,6 +124,13 @@ static BOOL ShouldEatKey(TextService *ts, UINT vk, BOOL shift)
             return TRUE;
     }
 
+    /* Eat navigation keys to flush composition */
+    if (ts->hangulCtx.state != HANGUL_STATE_EMPTY) {
+        if (vk == VK_LEFT || vk == VK_RIGHT || vk == VK_UP || vk == VK_DOWN ||
+            vk == VK_HOME || vk == VK_END || vk == VK_DELETE || vk == VK_TAB)
+            return TRUE;
+    }
+
     (void)shift;
     return FALSE;
 }
@@ -373,8 +380,51 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
             es->lpVtbl->Release((ITfEditSession *)es);
         }
 
-        /* For Escape, eat the key. For Enter, let it pass through. */
-        *pfEaten = (vk == VK_ESCAPE);
+        *pfEaten = TRUE;  /* Enter, Escape 모두 eat */
+
+        if (vk == VK_RETURN) {
+            /* 조합 커밋 후 Enter 재주입 */
+            INPUT inputs[2] = {0};
+            inputs[0].type = INPUT_KEYBOARD;
+            inputs[0].ki.wVk = VK_RETURN;
+            inputs[0].ki.wScan = (WORD)MapVirtualKey(VK_RETURN, MAPVK_VK_TO_VSC);
+            inputs[1].type = INPUT_KEYBOARD;
+            inputs[1].ki.wVk = VK_RETURN;
+            inputs[1].ki.wScan = (WORD)MapVirtualKey(VK_RETURN, MAPVK_VK_TO_VSC);
+            inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+            SendInput(2, inputs, sizeof(INPUT));
+        }
+        return S_OK;
+    }
+
+    /* Navigation keys: flush composition and re-inject key */
+    if ((vk == VK_LEFT || vk == VK_RIGHT || vk == VK_UP || vk == VK_DOWN ||
+         vk == VK_HOME || vk == VK_END || vk == VK_DELETE || vk == VK_TAB) &&
+        ts->hangulCtx.state != HANGUL_STATE_EMPTY)
+    {
+        HangulResult result = hangul_ic_flush(&ts->hangulCtx);
+        EditSession *es = NULL;
+
+        hr = EditSession_Create(ts, pic, ES_HANDLE_RESULT, &es);
+        if (SUCCEEDED(hr)) {
+            es->data.hangulResult = result;
+            RequestEditSession(ts, pic, ES_HANDLE_RESULT, es);
+            es->lpVtbl->Release((ITfEditSession *)es);
+        }
+
+        /* 키 재주입 */
+        {
+            INPUT inputs[2] = {0};
+            inputs[0].type = INPUT_KEYBOARD;
+            inputs[0].ki.wVk = (WORD)vk;
+            inputs[0].ki.wScan = (WORD)MapVirtualKey(vk, MAPVK_VK_TO_VSC);
+            inputs[1].type = INPUT_KEYBOARD;
+            inputs[1].ki.wVk = (WORD)vk;
+            inputs[1].ki.wScan = (WORD)MapVirtualKey(vk, MAPVK_VK_TO_VSC);
+            inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+            SendInput(2, inputs, sizeof(INPUT));
+        }
+        *pfEaten = TRUE;
         return S_OK;
     }
 
