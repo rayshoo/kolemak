@@ -20,7 +20,7 @@ A Colemak keyboard layout input method for Windows with native Korean (Dubeolsik
 
 ### Using the Installer (recommended)
 
-Download `kolemak-install.exe` from the [Releases](https://github.com/rayshoo/colemak_korean/releases) page and run it.
+Download `kolemak-install.exe` from the [Releases](https://github.com/rayshoo/kolemak/releases) page and run it.
 
 1. Run the installer (requires administrator privileges)
 2. **Reboot** after installation (to apply CapsLock key remapping)
@@ -116,7 +116,7 @@ A portable version is also available that runs as a single executable without in
 
 ### Portable Version Download
 
-Download from the [Releases](https://github.com/rayshoo/colemak_korean/releases) page:
+Download from the [Releases](https://github.com/rayshoo/kolemak/releases) page:
 - `kolemak-changed.exe` — ㅔ key moves to P key position
 - `kolemak-unchanged.exe` — ㅔ key stays on original ; key
 
