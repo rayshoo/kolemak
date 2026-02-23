@@ -312,7 +312,7 @@ static void ShowSettingsDialog(void)
     hwnd = CreateWindowExW(
         WS_EX_DLGMODALFRAME | WS_EX_TOPMOST,
         SETTINGS_WND_CLASS,
-        L"Kolemak v" KOLEMAK_VER_W(KOLEMAK_VERSION) L" \xC124\xC815",  /* Kolemak v{VERSION} 설정 */
+        L"Kolemak \xC124\xC815",  /* Kolemak 설정 */
         WS_POPUP | WS_CAPTION | WS_SYSMENU,
         0, 0, D(350), D(240),
         NULL, NULL, g_hInst, &sd);
@@ -397,6 +397,16 @@ static void ShowSettingsDialog(void)
         D(180), D(165), D(80), D(32),
         hwnd, (HMENU)(UINT_PTR)IDC_BTN_CANCEL, NULL, NULL);
     SendMessageW(btnCancel, WM_SETFONT, (WPARAM)sd.hFont, TRUE);
+
+    /* Version label (bottom-right) */
+    {
+        HWND lblVer = CreateWindowExW(0, L"STATIC",
+            L"v" KOLEMAK_VER_W(KOLEMAK_VERSION),
+            WS_CHILD | WS_VISIBLE | SS_RIGHT,
+            D(200), D(205), D(120), D(16),
+            hwnd, NULL, NULL, NULL);
+        SendMessageW(lblVer, WM_SETFONT, (WPARAM)sd.hFont, TRUE);
+    }
 
 #undef D
 
@@ -486,7 +496,7 @@ static BOOL CreateTrayIcon(HWND hwnd)
     nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     nid.uCallbackMessage = WM_TRAYICON;
     nid.hIcon = LoadIconW(g_hInst, MAKEINTRESOURCEW(IDI_KOLEMAK));
-    lstrcpyW(nid.szTip, L"Kolemak IME v" KOLEMAK_VER_W(KOLEMAK_VERSION));
+    lstrcpyW(nid.szTip, L"Kolemak IME");
 
     return Shell_NotifyIconW(NIM_ADD, &nid);
 }
