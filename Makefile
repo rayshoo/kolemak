@@ -11,7 +11,7 @@
 #   make clean     - 빌드 결과물 삭제
 #   make installer - 인스톨러 생성 (Inno Setup 필요)
 
-VERSION       := $(shell sed -n 's/.*VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt | head -1)
+VERSION       := $(shell sed -n 's/^project.*VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
 BUILD64_DIR   := build
 BUILD32_DIR   := build32
 DLL64_PATH    := $(BUILD64_DIR)/Release/kolemak.dll
