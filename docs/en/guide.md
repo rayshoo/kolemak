@@ -71,11 +71,11 @@ In Colemak, QWERTY `P` becomes `;`. This creates a conflict with Korean Dubeolsi
 
 | Setting | English `;` position | Korean `ㅔ` position |
 |---------|---------------------|---------------------|
-| **On** (Changed) | Colemak `;` on `P` key | `ㅔ` moves to `P` key |
-| **Off** (Unchanged) | Colemak `;` on `P` key | `ㅔ` stays on original `;` key |
+| **On** (Changed) | Colemak `;` on `P` key | `ㅔ` moves to `;` key |
+| **Off** (Unchanged) | Colemak `;` on `P` key | `ㅔ` stays on original `P` key |
 
-- **On** — Moves `ㅔ` to follow the Colemak `;` position (`P` key). For a fully unified layout.
-- **Off** — Keeps `ㅔ` on its original physical key (`;` key). For Korean input identical to a standard QWERTY keyboard.
+- **On** — Moves `ㅔ` to the physical `;` key. English `;` and Korean `ㅔ` share the same key for a unified layout.
+- **Off** — Keeps `ㅔ` on the physical `P` key. Korean input stays identical to standard QWERTY Dubeolsik.
 
 ## Key Mapping
 
