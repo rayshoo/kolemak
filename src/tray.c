@@ -314,7 +314,7 @@ static void ShowSettingsDialog(void)
         SETTINGS_WND_CLASS,
         L"Kolemak \xC124\xC815",  /* Kolemak 설정 */
         WS_POPUP | WS_CAPTION | WS_SYSMENU,
-        0, 0, D(350), D(240),
+        0, 0, D(350), D(260),
         NULL, NULL, g_hInst, &sd);
 
     if (!hwnd) return;
