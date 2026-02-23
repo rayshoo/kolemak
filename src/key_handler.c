@@ -131,6 +131,12 @@ static BOOL ShouldEatKey(TextService *ts, UINT vk, BOOL shift)
             return TRUE;
     }
 
+    /* Eat all remaining keys during composition (space, numbers,
+     * punctuation etc.) to ensure proper flush before key delivery.
+     * Without this, async edit sessions on Win10 cause misordering. */
+    if (ts->hangulCtx.state != HANGUL_STATE_EMPTY)
+        return TRUE;
+
     (void)shift;
     return FALSE;
 }
@@ -401,6 +407,42 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
     if ((vk == VK_LEFT || vk == VK_RIGHT || vk == VK_UP || vk == VK_DOWN ||
          vk == VK_HOME || vk == VK_END || vk == VK_DELETE || vk == VK_TAB) &&
         ts->hangulCtx.state != HANGUL_STATE_EMPTY)
+    {
+        HangulResult result = hangul_ic_flush(&ts->hangulCtx);
+        EditSession *es = NULL;
+
+        hr = EditSession_Create(ts, pic, ES_HANDLE_RESULT, &es);
+        if (SUCCEEDED(hr)) {
+            es->data.hangulResult = result;
+            RequestEditSession(ts, pic, ES_HANDLE_RESULT, es);
+            es->lpVtbl->Release((ITfEditSession *)es);
+        }
+
+        /* 키 재주입 */
+        {
+            INPUT inputs[2] = {0};
+            inputs[0].type = INPUT_KEYBOARD;
+            inputs[0].ki.wVk = (WORD)vk;
+            inputs[0].ki.wScan = (WORD)MapVirtualKey(vk, MAPVK_VK_TO_VSC);
+            inputs[1].type = INPUT_KEYBOARD;
+            inputs[1].ki.wVk = (WORD)vk;
+            inputs[1].ki.wScan = (WORD)MapVirtualKey(vk, MAPVK_VK_TO_VSC);
+            inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+            SendInput(2, inputs, sizeof(INPUT));
+        }
+        *pfEaten = TRUE;
+        return S_OK;
+    }
+
+    /* Catch-all: flush composition for any remaining key (space, numbers,
+     * punctuation, etc.) that was eaten by ShouldEatKey during composition.
+     * Without this, async edit sessions on Win10 cause misordering. */
+    if (ts->koreanMode &&
+        ts->hangulCtx.state != HANGUL_STATE_EMPTY &&
+        !(vk >= 'A' && vk <= 'Z') &&
+        vk != VK_OEM_1 &&
+        vk != VK_BACK &&
+        vk != VK_SHIFT && vk != VK_LSHIFT && vk != VK_RSHIFT)
     {
         HangulResult result = hangul_ic_flush(&ts->hangulCtx);
         EditSession *es = NULL;

@@ -57,22 +57,34 @@ Filename: "regsvr32.exe"; Parameters: "/u /s ""{app}\x86\kolemak.dll"""; Flags: 
 Filename: "regsvr32.exe"; Parameters: "/u /s ""{app}\x64\kolemak.dll"""; Flags: runhidden; Check: Is64BitInstallMode
 
 [Code]
+const
+  UninstallRegKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{B8F5E3A1-7C2D-4E6F-9A1B-3D5E7F9C2A4B}_is1';
+
 function InitializeSetup(): Boolean;
 var
   UninstallString: String;
+  UninstallPath: String;
   ResultCode: Integer;
 begin
   Result := True;
 
-  if not RegQueryStringValue(HKLM,
-    'Software\Microsoft\Windows\CurrentVersion\Uninstall\{B8F5E3A1-7C2D-4E6F-9A1B-3D5E7F9C2A4B}_is1',
+  if not RegQueryStringValue(HKLM, UninstallRegKey,
     'UninstallString', UninstallString) then
     Exit;
+
+  UninstallPath := RemoveQuotes(UninstallString);
+
+  { 언인스톨러가 없으면 레지스트리 잔재 정리 후 신규 설치 }
+  if not FileExists(UninstallPath) then
+  begin
+    RegDeleteKeyIncludingSubkeys(HKLM, UninstallRegKey);
+    Exit;
+  end;
 
   if MsgBox('Kolemak IME가 이미 설치되어 있습니다.' + #13#10 +
     '제거하시겠습니까?', mbConfirmation, MB_YESNO) = IDYES then
   begin
-    Exec(RemoveQuotes(UninstallString), '/NORESTART', '',
+    Exec(UninstallPath, '/NORESTART', '',
          SW_SHOW, ewWaitUntilTerminated, ResultCode);
   end;
   Result := False;
