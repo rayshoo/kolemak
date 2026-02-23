@@ -123,6 +123,8 @@ struct EditSession {
         HangulResult hangulResult;
         WCHAR        ch;
     } data;
+
+    UINT reinjectVk;  /* VK code to re-inject after session completes (0 = none) */
 };
 
 HRESULT EditSession_Create(TextService *ts, ITfContext *ctx,

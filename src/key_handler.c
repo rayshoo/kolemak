@@ -386,24 +386,14 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
         hr = EditSession_Create(ts, pic, ES_HANDLE_RESULT, &es);
         if (SUCCEEDED(hr)) {
             es->data.hangulResult = result;
+            /* Re-inject Enter after edit session completes (not Escape) */
+            if (vk == VK_RETURN)
+                es->reinjectVk = VK_RETURN;
             RequestEditSession(ts, pic, ES_HANDLE_RESULT, es);
             es->lpVtbl->Release((ITfEditSession *)es);
         }
 
         *pfEaten = TRUE;  /* Enter, Escape 모두 eat */
-
-        if (vk == VK_RETURN) {
-            /* 조합 커밋 후 Enter 재주입 */
-            INPUT inputs[2] = {0};
-            inputs[0].type = INPUT_KEYBOARD;
-            inputs[0].ki.wVk = VK_RETURN;
-            inputs[0].ki.wScan = (WORD)MapVirtualKey(VK_RETURN, MAPVK_VK_TO_VSC);
-            inputs[1].type = INPUT_KEYBOARD;
-            inputs[1].ki.wVk = VK_RETURN;
-            inputs[1].ki.wScan = (WORD)MapVirtualKey(VK_RETURN, MAPVK_VK_TO_VSC);
-            inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
-            SendInput(2, inputs, sizeof(INPUT));
-        }
         return S_OK;
     }
 
@@ -418,22 +408,11 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
         hr = EditSession_Create(ts, pic, ES_HANDLE_RESULT, &es);
         if (SUCCEEDED(hr)) {
             es->data.hangulResult = result;
+            es->reinjectVk = vk;  /* Re-inject after edit session completes */
             RequestEditSession(ts, pic, ES_HANDLE_RESULT, es);
             es->lpVtbl->Release((ITfEditSession *)es);
         }
 
-        /* 키 재주입 */
-        {
-            INPUT inputs[2] = {0};
-            inputs[0].type = INPUT_KEYBOARD;
-            inputs[0].ki.wVk = (WORD)vk;
-            inputs[0].ki.wScan = (WORD)MapVirtualKey(vk, MAPVK_VK_TO_VSC);
-            inputs[1].type = INPUT_KEYBOARD;
-            inputs[1].ki.wVk = (WORD)vk;
-            inputs[1].ki.wScan = (WORD)MapVirtualKey(vk, MAPVK_VK_TO_VSC);
-            inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
-            SendInput(2, inputs, sizeof(INPUT));
-        }
         *pfEaten = TRUE;
         return S_OK;
     }
@@ -457,22 +436,11 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
         hr = EditSession_Create(ts, pic, ES_HANDLE_RESULT, &es);
         if (SUCCEEDED(hr)) {
             es->data.hangulResult = result;
+            es->reinjectVk = vk;  /* Re-inject after edit session completes */
             RequestEditSession(ts, pic, ES_HANDLE_RESULT, es);
             es->lpVtbl->Release((ITfEditSession *)es);
         }
 
-        /* 키 재주입 */
-        {
-            INPUT inputs[2] = {0};
-            inputs[0].type = INPUT_KEYBOARD;
-            inputs[0].ki.wVk = (WORD)vk;
-            inputs[0].ki.wScan = (WORD)MapVirtualKey(vk, MAPVK_VK_TO_VSC);
-            inputs[1].type = INPUT_KEYBOARD;
-            inputs[1].ki.wVk = (WORD)vk;
-            inputs[1].ki.wScan = (WORD)MapVirtualKey(vk, MAPVK_VK_TO_VSC);
-            inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
-            SendInput(2, inputs, sizeof(INPUT));
-        }
         *pfEaten = TRUE;
         return S_OK;
     }

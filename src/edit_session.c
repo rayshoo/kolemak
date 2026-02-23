@@ -173,6 +173,19 @@ static HRESULT InsertText(ITfContext *ctx, TfEditCookie ec,
 
 /* ===== DoEditSession - main dispatch ===== */
 
+static void ReinjectKey(UINT vk)
+{
+    INPUT inputs[2] = {0};
+    inputs[0].type = INPUT_KEYBOARD;
+    inputs[0].ki.wVk = (WORD)vk;
+    inputs[0].ki.wScan = (WORD)MapVirtualKey(vk, MAPVK_VK_TO_VSC);
+    inputs[1].type = INPUT_KEYBOARD;
+    inputs[1].ki.wVk = (WORD)vk;
+    inputs[1].ki.wScan = (WORD)MapVirtualKey(vk, MAPVK_VK_TO_VSC);
+    inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    SendInput(2, inputs, sizeof(INPUT));
+}
+
 static HRESULT STDMETHODCALLTYPE ES_DoEditSession(
     ITfEditSession *pThis, TfEditCookie ec)
 {
@@ -293,6 +306,10 @@ static HRESULT STDMETHODCALLTYPE ES_DoEditSession(
         break;
     }
     }
+
+    /* Re-inject key after edit session completes (for proper ordering) */
+    if (es->reinjectVk != 0)
+        ReinjectKey(es->reinjectVk);
 
     return hr;
 }
