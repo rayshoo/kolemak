@@ -133,8 +133,12 @@ static BOOL ShouldEatKey(TextService *ts, UINT vk, BOOL shift)
 
     /* Eat all remaining keys during composition (space, numbers,
      * punctuation etc.) to ensure proper flush before key delivery.
-     * Without this, async edit sessions on Win10 cause misordering. */
-    if (ts->hangulCtx.state != HANGUL_STATE_EMPTY)
+     * Without this, async edit sessions on Win10 cause misordering.
+     * Exclude Ctrl/Alt/Win so modifier shortcuts (Ctrl+A etc.) work. */
+    if (ts->hangulCtx.state != HANGUL_STATE_EMPTY &&
+        vk != VK_CONTROL && vk != VK_LCONTROL && vk != VK_RCONTROL &&
+        vk != VK_MENU && vk != VK_LMENU && vk != VK_RMENU &&
+        vk != VK_LWIN && vk != VK_RWIN)
         return TRUE;
 
     (void)shift;
@@ -442,7 +446,10 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
         !(vk >= 'A' && vk <= 'Z') &&
         vk != VK_OEM_1 &&
         vk != VK_BACK &&
-        vk != VK_SHIFT && vk != VK_LSHIFT && vk != VK_RSHIFT)
+        vk != VK_SHIFT && vk != VK_LSHIFT && vk != VK_RSHIFT &&
+        vk != VK_CONTROL && vk != VK_LCONTROL && vk != VK_RCONTROL &&
+        vk != VK_MENU && vk != VK_LMENU && vk != VK_RMENU &&
+        vk != VK_LWIN && vk != VK_RWIN)
     {
         HangulResult result = hangul_ic_flush(&ts->hangulCtx);
         EditSession *es = NULL;
@@ -478,6 +485,19 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
         BOOL win  = ((GetKeyState(VK_LWIN) & 0x8000) |
                      (GetKeyState(VK_RWIN) & 0x8000)) != 0;
         if (ctrl || alt || win) {
+            /* Flush composition before passing modifier shortcut */
+            if (ts->koreanMode &&
+                ts->hangulCtx.state != HANGUL_STATE_EMPTY)
+            {
+                HangulResult result = hangul_ic_flush(&ts->hangulCtx);
+                EditSession *es = NULL;
+                hr = EditSession_Create(ts, pic, ES_HANDLE_RESULT, &es);
+                if (SUCCEEDED(hr)) {
+                    es->data.hangulResult = result;
+                    RequestEditSession(ts, pic, ES_HANDLE_RESULT, es);
+                    es->lpVtbl->Release((ITfEditSession *)es);
+                }
+            }
             if (ts->colemakMode) {
                 if (ts->colemakRemapVk == vk) {
                     /* Our remapped key coming back, pass through */

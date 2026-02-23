@@ -30,7 +30,7 @@ Download `kolemak-install.exe` from the [Releases](https://github.com/rayshoo/ko
 
 ### Uninstallation
 
-Go to **Windows Settings > Apps > Installed apps** and uninstall "Kolemak IME", or run the bundled uninstaller.
+Go to **Windows Settings > Apps > Installed apps** and uninstall "Kolemak IME". Alternatively, run `kolemak-install.exe` again and it will prompt you to uninstall.
 
 ### Building from Source
 
@@ -114,7 +114,6 @@ After updating (reinstalling) Kolemak, the settings dialog from the tray icon ma
    - **Remove** Kolemak IME
    - **Add** Kolemak IME again
    - **Remove** Microsoft IME
-2. Or **log out and log back in** (or reboot)
 
 This forces the system to reload the new DLL.
 
