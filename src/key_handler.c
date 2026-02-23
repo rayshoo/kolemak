@@ -255,11 +255,29 @@ static HRESULT STDMETHODCALLTYPE KES_OnTestKeyDown(
     WPARAM wParam, LPARAM lParam, BOOL *pfEaten)
 {
     TextService *ts = TS_FROM_KEY_EVENT_SINK(pThis);
+    UINT vk = (UINT)wParam;
     BOOL shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
 
-    (void)pic; (void)lParam;
+    (void)lParam;
 
-    *pfEaten = ShouldEatKey(ts, (UINT)wParam, shift);
+    /* Flush composition and let Enter pass through to the app directly.
+     * Games often ignore SendInput-injected keys (DirectInput/RawInput),
+     * so we flush here and let the physical key event reach the app
+     * instead of eating it and re-injecting via SendInput. */
+    if (vk == VK_RETURN && ts->hangulCtx.state != HANGUL_STATE_EMPTY) {
+        HangulResult result = hangul_ic_flush(&ts->hangulCtx);
+        EditSession *es = NULL;
+        HRESULT hr = EditSession_Create(ts, pic, ES_HANDLE_RESULT, &es);
+        if (SUCCEEDED(hr)) {
+            es->data.hangulResult = result;
+            RequestEditSession(ts, pic, ES_HANDLE_RESULT, es);
+            es->lpVtbl->Release((ITfEditSession *)es);
+        }
+        *pfEaten = FALSE;  /* Let physical Enter reach the app */
+        return S_OK;
+    }
+
+    *pfEaten = ShouldEatKey(ts, vk, shift);
     return S_OK;
 }
 
