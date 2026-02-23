@@ -4,7 +4,7 @@ A Colemak keyboard layout input method for Windows with native Korean (Dubeolsik
 
 ## Features
 
-- **Native IME** — Directly integrated into the Windows input framework, works reliably in all applications
+- **Native IME** — Directly integrated into the Windows input framework, aiming for compatibility on par with the default Windows Korean IME
 - **Colemak English + Dubeolsik Korean** — Toggle Korean/English with `Hangul key` or `Right Alt`
 - **Instant Colemak / QWERTY toggle** — Press `Ctrl+Space` to switch, convenient when sharing your machine with others
 - **CapsLock as Backspace** — CapsLock acts as Backspace, `Shift+CapsLock` toggles actual CapsLock
