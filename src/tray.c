@@ -27,6 +27,7 @@
 #define TRAY_ICON_ID        1
 
 #define IDM_SETTINGS    1001
+#define IDM_ABOUT       1002
 
 /* Settings dialog control IDs */
 #define IDC_CHK_CAPSLOCK    2001
@@ -314,7 +315,7 @@ static void ShowSettingsDialog(void)
         SETTINGS_WND_CLASS,
         L"Kolemak \xC124\xC815",  /* Kolemak 설정 */
         WS_POPUP | WS_CAPTION | WS_SYSMENU,
-        0, 0, D(350), D(260),
+        0, 0, D(350), D(240),
         NULL, NULL, g_hInst, &sd);
 
     if (!hwnd) return;
@@ -398,16 +399,6 @@ static void ShowSettingsDialog(void)
         hwnd, (HMENU)(UINT_PTR)IDC_BTN_CANCEL, NULL, NULL);
     SendMessageW(btnCancel, WM_SETFONT, (WPARAM)sd.hFont, TRUE);
 
-    /* Version label (bottom-right) */
-    {
-        HWND lblVer = CreateWindowExW(0, L"STATIC",
-            L"v" KOLEMAK_VER_W(KOLEMAK_VERSION),
-            WS_CHILD | WS_VISIBLE | SS_RIGHT,
-            D(200), D(205), D(120), D(16),
-            hwnd, NULL, NULL, NULL);
-        SendMessageW(lblVer, WM_SETFONT, (WPARAM)sd.hFont, TRUE);
-    }
-
 #undef D
 
     ShowWindow(hwnd, SW_SHOW);
@@ -439,6 +430,8 @@ static void ShowTrayContextMenu(HWND hwnd)
 
     AppendMenuW(hMenu, MF_STRING, IDM_SETTINGS,
                 L"\xC124\xC815(&S)...");  /* 설정(&S)... */
+    AppendMenuW(hMenu, MF_STRING, IDM_ABOUT,
+                L"\xC815\xBCF4(&A)...");  /* 정보(&A)... */
 
     GetCursorPos(&pt);
 
@@ -451,6 +444,12 @@ static void ShowTrayContextMenu(HWND hwnd)
 
     if (cmd == IDM_SETTINGS) {
         ShowSettingsDialog();
+    } else if (cmd == IDM_ABOUT) {
+        MessageBoxW(NULL,
+            L"Kolemak IME v" KOLEMAK_VER_W(KOLEMAK_VERSION) L"\n\n"
+            L"https://github.com/rayshoo/kolemak",
+            L"Kolemak",
+            MB_OK | MB_ICONINFORMATION);
     }
 }
 
