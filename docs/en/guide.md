@@ -101,6 +101,23 @@ The following QWERTY keys are remapped in Colemak mode. All other keys remain un
 | `;` | `O` | see [ㅔ Key Position](#ㅔ-key-position) |
 | `N` | `K` | `ㅜ` |
 
+## Troubleshooting
+
+### Settings dialog doesn't open after an update
+
+After updating (reinstalling) Kolemak, the settings dialog from the tray icon may not open, or input may behave unexpectedly. This happens because the system keeps the previous version of the DLL loaded in memory.
+
+**Fix:**
+
+1. Go to **Settings > Time & Language > Language & Region > Korean > Language options > Keyboard**:
+   - **Add** Microsoft IME
+   - **Remove** Kolemak IME
+   - **Add** Kolemak IME again
+   - **Remove** Microsoft IME
+2. Or **log out and log back in** (or reboot)
+
+This forces the system to reload the new DLL.
+
 ## Portable Version (AutoHotkey)
 
 A portable version is also available that runs as a single executable without installation. Useful for temporary use on shared computers or when administrator privileges are not available.
