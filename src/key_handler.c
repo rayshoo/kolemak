@@ -255,11 +255,56 @@ static HRESULT STDMETHODCALLTYPE KES_OnTestKeyDown(
     WPARAM wParam, LPARAM lParam, BOOL *pfEaten)
 {
     TextService *ts = TS_FROM_KEY_EVENT_SINK(pThis);
+    UINT vk = (UINT)wParam;
     BOOL shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
 
-    (void)pic; (void)lParam;
+    (void)lParam;
 
-    *pfEaten = ShouldEatKey(ts, (UINT)wParam, shift);
+    /* Flush composition and let Enter pass through to the app directly.
+     * This uses the normal Windows message path (not TSF keystroke manager
+     * forwarding), which is compatible with all apps including games
+     * (DirectInput) and KakaoTalk.
+     *
+     * Try sync edit session first to ensure composition is properly ended
+     * before Enter reaches the app (required for browser search bars).
+     * If sync fails (rare), fall back to async + SendInput re-injection. */
+    if (vk == VK_RETURN && ts->hangulCtx.state != HANGUL_STATE_EMPTY) {
+        HangulResult result = hangul_ic_flush(&ts->hangulCtx);
+        EditSession *es = NULL;
+        HRESULT hr = EditSession_Create(ts, pic, ES_HANDLE_RESULT, &es);
+        if (SUCCEEDED(hr)) {
+            HRESULT hrSession;
+            es->data.hangulResult = result;
+
+            hr = pic->lpVtbl->RequestEditSession(
+                pic, ts->clientId,
+                (ITfEditSession *)es,
+                TF_ES_SYNC | TF_ES_READWRITE,
+                &hrSession);
+
+            if (hr == TF_E_SYNCHRONOUS) {
+                /* Sync not available: queue async, re-inject after commit */
+                es->reinjectVk = VK_RETURN;
+                pic->lpVtbl->RequestEditSession(
+                    pic, ts->clientId,
+                    (ITfEditSession *)es,
+                    TF_ES_ASYNC | TF_ES_READWRITE,
+                    &hrSession);
+                es->lpVtbl->Release((ITfEditSession *)es);
+                ts->enterPending = TRUE;
+                *pfEaten = TRUE;
+                return S_OK;
+            }
+
+            es->lpVtbl->Release((ITfEditSession *)es);
+        }
+
+        /* Sync succeeded: composition ended, let Enter pass through */
+        *pfEaten = FALSE;
+        return S_OK;
+    }
+
+    *pfEaten = ShouldEatKey(ts, vk, shift);
     return S_OK;
 }
 
@@ -283,6 +328,14 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
 
     (void)lParam;
     *pfEaten = FALSE;
+
+    /* Async Enter pending from OnTestKeyDown: eat the key silently.
+     * The edit session callback will re-inject Enter via reinjectVk. */
+    if (vk == VK_RETURN && ts->enterPending) {
+        ts->enterPending = FALSE;
+        *pfEaten = TRUE;
+        return S_OK;
+    }
 
     /* CapsLock handling: VK_F13 (remapped via Scancode Map) or
      * VK_CAPITAL (pre-reboot / no scancode map fallback) */
@@ -376,9 +429,8 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
         return S_OK;
     }
 
-    /* Handle Enter/Escape: flush composition */
-    if ((vk == VK_RETURN || vk == VK_ESCAPE) &&
-        ts->hangulCtx.state != HANGUL_STATE_EMPTY)
+    /* Handle Escape: flush composition (Enter is handled in OnTestKeyDown) */
+    if (vk == VK_ESCAPE && ts->hangulCtx.state != HANGUL_STATE_EMPTY)
     {
         HangulResult result = hangul_ic_flush(&ts->hangulCtx);
         EditSession *es = NULL;
@@ -390,11 +442,7 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
             es->lpVtbl->Release((ITfEditSession *)es);
         }
 
-        /* Enter: let the original key pass through to the app after
-         * composition is flushed. The keystroke manager forwards the key
-         * when pfEaten is FALSE, so no SendInput re-injection is needed.
-         * Escape: just eat (flush composition only, no further action). */
-        *pfEaten = (vk != VK_RETURN);
+        *pfEaten = TRUE;
         return S_OK;
     }
 
