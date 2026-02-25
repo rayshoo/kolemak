@@ -66,7 +66,6 @@ struct TextService {
     BOOL            colemakMode;
     BOOL            capsLockAsBackspace;
     UINT            colemakRemapVk;    /* guard for Ctrl/Alt shortcut VK remap */
-    BOOL            enterReinjecting;  /* TRUE = re-inject Enter from OnKeyUp */
     BOOL            capsLockOn;        /* internal CapsLock state (managed by IME) */
     BOOL            semicolonSwap;     /* TRUE = ㅔ on ; key ("unchanged" mode) */
 
