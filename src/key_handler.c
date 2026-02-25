@@ -407,7 +407,10 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
                 &hrSession);
 
             if (hr == TF_E_SYNCHRONOUS) {
-                /* Sync not available: single async handles commit + reinject */
+                /* Sync not available (e.g. games): single async session
+                 * handles both EndComposition and re-inject in one callback.
+                 * The re-inject arrives AFTER EndComposition — critical for
+                 * apps that ignore Enter while composition is active. */
                 es->reinjectVk = VK_RETURN;
                 pic->lpVtbl->RequestEditSession(
                     pic, ts->clientId,
@@ -417,22 +420,22 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
                 es->lpVtbl->Release((ITfEditSession *)es);
             } else {
                 /* Sync succeeded: composition ended immediately.
-                 * Queue a lightweight async edit session just for
-                 * deferred re-inject (outside TSF key processing). */
+                 * Re-inject Enter right now via SendInput — browsers
+                 * need the Enter to arrive in the same event cycle as
+                 * compositionend for form submission to work. */
                 es->lpVtbl->Release((ITfEditSession *)es);
                 {
-                    EditSession *esR = NULL;
-                    hr = EditSession_Create(ts, pic, ES_HANDLE_RESULT, &esR);
-                    if (SUCCEEDED(hr)) {
-                        esR->data.hangulResult.type = HANGUL_RESULT_PASS;
-                        esR->reinjectVk = VK_RETURN;
-                        pic->lpVtbl->RequestEditSession(
-                            pic, ts->clientId,
-                            (ITfEditSession *)esR,
-                            TF_ES_ASYNC | TF_ES_READWRITE,
-                            &hrSession);
-                        esR->lpVtbl->Release((ITfEditSession *)esR);
-                    }
+                    INPUT inputs[2] = {0};
+                    inputs[0].type = INPUT_KEYBOARD;
+                    inputs[0].ki.wVk = VK_RETURN;
+                    inputs[0].ki.wScan =
+                        (WORD)MapVirtualKey(VK_RETURN, MAPVK_VK_TO_VSC);
+                    inputs[1].type = INPUT_KEYBOARD;
+                    inputs[1].ki.wVk = VK_RETURN;
+                    inputs[1].ki.wScan =
+                        (WORD)MapVirtualKey(VK_RETURN, MAPVK_VK_TO_VSC);
+                    inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+                    SendInput(2, inputs, sizeof(INPUT));
                 }
             }
         }
