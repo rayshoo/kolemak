@@ -259,12 +259,9 @@ static HRESULT STDMETHODCALLTYPE KES_OnTestKeyDown(
 
     (void)pic; (void)lParam;
 
-    /* If Enter re-inject is pending and a repeat keydown arrives,
-     * let it pass through (it will trigger the action) and cancel
-     * the re-inject to avoid double-firing. */
+    /* Eat Enter repeats while async re-inject is pending */
     if ((UINT)wParam == VK_RETURN && ts->enterReinjecting) {
-        ts->enterReinjecting = FALSE;
-        *pfEaten = FALSE;
+        *pfEaten = TRUE;
         return S_OK;
     }
 
@@ -280,7 +277,7 @@ static HRESULT STDMETHODCALLTYPE KES_OnTestKeyUp(
 
     (void)pic; (void)lParam;
 
-    /* Eat the physical Enter keyup when we plan to re-inject from OnKeyUp */
+    /* Eat the physical Enter keyup to prevent orphaned keyup events */
     if ((UINT)wParam == VK_RETURN && ts->enterReinjecting) {
         *pfEaten = TRUE;
         return S_OK;
@@ -394,16 +391,23 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
         return S_OK;
     }
 
+    /* Eat Enter repeats while async re-inject is pending */
+    if (vk == VK_RETURN && ts->enterReinjecting) {
+        *pfEaten = TRUE;
+        return S_OK;
+    }
+
     /* Handle Enter: flush composition, end it, re-inject key.
      *
-     * Try sync edit session first so EndComposition runs immediately.
-     * On sync success, defer the re-inject to OnKeyUp — doing it here
-     * in OnKeyDown doesn't work for games because TSF's keystroke
-     * manager still holds internal state that blocks the injected key.
-     * By the time OnKeyUp runs, that state is fully cleared.
+     * Try sync edit session first so EndComposition runs immediately
+     * (required for browsers to process compositionend before Enter).
+     * Then queue a separate async edit session for deferred re-inject.
+     * Re-injecting during OnKeyDown/OnKeyUp doesn't work for games
+     * because TSF's keystroke manager still holds internal state;
+     * the async callback runs completely outside TSF key processing.
      *
-     * If sync is rejected, fall back to async + deferred SendInput
-     * re-injection from the edit session callback. */
+     * If sync is rejected, a single async session handles both
+     * EndComposition and re-inject. */
     if (vk == VK_RETURN && ts->hangulCtx.state != HANGUL_STATE_EMPTY)
     {
         HangulResult result = hangul_ic_flush(&ts->hangulCtx);
@@ -421,7 +425,7 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
                 &hrSession);
 
             if (hr == TF_E_SYNCHRONOUS) {
-                /* Sync not available: queue async + re-inject from callback */
+                /* Sync not available: single async handles commit + reinject */
                 es->reinjectVk = VK_RETURN;
                 pic->lpVtbl->RequestEditSession(
                     pic, ts->clientId,
@@ -429,16 +433,29 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
                     TF_ES_ASYNC | TF_ES_READWRITE,
                     &hrSession);
                 es->lpVtbl->Release((ITfEditSession *)es);
-                *pfEaten = TRUE;
-                return S_OK;
+            } else {
+                /* Sync succeeded: composition ended immediately.
+                 * Queue a lightweight async edit session just for
+                 * deferred re-inject (outside TSF key processing). */
+                es->lpVtbl->Release((ITfEditSession *)es);
+                {
+                    EditSession *esR = NULL;
+                    hr = EditSession_Create(ts, pic, ES_HANDLE_RESULT, &esR);
+                    if (SUCCEEDED(hr)) {
+                        esR->data.hangulResult.type = HANGUL_RESULT_PASS;
+                        esR->reinjectVk = VK_RETURN;
+                        pic->lpVtbl->RequestEditSession(
+                            pic, ts->clientId,
+                            (ITfEditSession *)esR,
+                            TF_ES_ASYNC | TF_ES_READWRITE,
+                            &hrSession);
+                        esR->lpVtbl->Release((ITfEditSession *)esR);
+                    }
+                }
             }
-
-            es->lpVtbl->Release((ITfEditSession *)es);
         }
 
-        /* Sync succeeded: composition ended.
-         * Re-inject from OnKeyUp (not here) so TSF's keystroke manager
-         * state is fully cleared before the key enters the input queue. */
+        /* Eat both keydown and keyup; async callback will re-inject */
         ts->enterReinjecting = TRUE;
         *pfEaten = TRUE;
         return S_OK;
@@ -592,25 +609,9 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyUp(
 
     (void)pic; (void)lParam;
 
-    /* Re-inject Enter after composition was ended by sync edit session.
-     * This runs after OnKeyDown processing is fully complete, so TSF's
-     * keystroke manager state is cleared — critical for games/DirectInput
-     * to receive the injected key. */
+    /* Clear Enter re-inject flag; actual re-inject comes from async callback */
     if ((UINT)wParam == VK_RETURN && ts->enterReinjecting) {
         ts->enterReinjecting = FALSE;
-        {
-            INPUT inputs[2] = {0};
-            inputs[0].type = INPUT_KEYBOARD;
-            inputs[0].ki.wVk = VK_RETURN;
-            inputs[0].ki.wScan =
-                (WORD)MapVirtualKey(VK_RETURN, MAPVK_VK_TO_VSC);
-            inputs[1].type = INPUT_KEYBOARD;
-            inputs[1].ki.wVk = VK_RETURN;
-            inputs[1].ki.wScan =
-                (WORD)MapVirtualKey(VK_RETURN, MAPVK_VK_TO_VSC);
-            inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
-            SendInput(2, inputs, sizeof(INPUT));
-        }
         *pfEaten = TRUE;
         return S_OK;
     }
