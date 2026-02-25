@@ -259,6 +259,15 @@ static HRESULT STDMETHODCALLTYPE KES_OnTestKeyDown(
 
     (void)pic; (void)lParam;
 
+    /* If Enter re-inject is pending and a repeat keydown arrives,
+     * let it pass through (it will trigger the action) and cancel
+     * the re-inject to avoid double-firing. */
+    if ((UINT)wParam == VK_RETURN && ts->enterReinjecting) {
+        ts->enterReinjecting = FALSE;
+        *pfEaten = FALSE;
+        return S_OK;
+    }
+
     *pfEaten = ShouldEatKey(ts, (UINT)wParam, shift);
     return S_OK;
 }
@@ -267,7 +276,16 @@ static HRESULT STDMETHODCALLTYPE KES_OnTestKeyUp(
     ITfKeyEventSink *pThis, ITfContext *pic,
     WPARAM wParam, LPARAM lParam, BOOL *pfEaten)
 {
-    (void)pThis; (void)pic; (void)wParam; (void)lParam;
+    TextService *ts = TS_FROM_KEY_EVENT_SINK(pThis);
+
+    (void)pic; (void)lParam;
+
+    /* Eat the physical Enter keyup when we plan to re-inject from OnKeyUp */
+    if ((UINT)wParam == VK_RETURN && ts->enterReinjecting) {
+        *pfEaten = TRUE;
+        return S_OK;
+    }
+
     *pfEaten = FALSE;
     return S_OK;
 }
@@ -376,16 +394,16 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
         return S_OK;
     }
 
-    /* Handle Enter: flush composition, then try to let Enter pass through.
+    /* Handle Enter: flush composition, end it, re-inject key.
      *
-     * Try sync edit session first so EndComposition runs before the key
-     * reaches the app.  On sync success, set pfEaten=FALSE — TSF will
-     * forward the original physical Enter to the app (works for browsers,
-     * KakaoTalk, games, etc.).
+     * Try sync edit session first so EndComposition runs immediately.
+     * On sync success, defer the re-inject to OnKeyUp — doing it here
+     * in OnKeyDown doesn't work for games because TSF's keystroke
+     * manager still holds internal state that blocks the injected key.
+     * By the time OnKeyUp runs, that state is fully cleared.
      *
-     * If sync is rejected (e.g. app holds a read-only lock), fall back to
-     * async + SendInput re-injection so the Enter arrives after the
-     * composition is properly ended. */
+     * If sync is rejected, fall back to async + deferred SendInput
+     * re-injection from the edit session callback. */
     if (vk == VK_RETURN && ts->hangulCtx.state != HANGUL_STATE_EMPTY)
     {
         HangulResult result = hangul_ic_flush(&ts->hangulCtx);
@@ -403,7 +421,7 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
                 &hrSession);
 
             if (hr == TF_E_SYNCHRONOUS) {
-                /* Sync not available: queue async + re-inject */
+                /* Sync not available: queue async + re-inject from callback */
                 es->reinjectVk = VK_RETURN;
                 pic->lpVtbl->RequestEditSession(
                     pic, ts->clientId,
@@ -418,8 +436,11 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
             es->lpVtbl->Release((ITfEditSession *)es);
         }
 
-        /* Sync succeeded: composition ended, let Enter pass through */
-        *pfEaten = FALSE;
+        /* Sync succeeded: composition ended.
+         * Re-inject from OnKeyUp (not here) so TSF's keystroke manager
+         * state is fully cleared before the key enters the input queue. */
+        ts->enterReinjecting = TRUE;
+        *pfEaten = TRUE;
         return S_OK;
     }
 
@@ -567,7 +588,33 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyUp(
     ITfKeyEventSink *pThis, ITfContext *pic,
     WPARAM wParam, LPARAM lParam, BOOL *pfEaten)
 {
-    (void)pThis; (void)pic; (void)wParam; (void)lParam;
+    TextService *ts = TS_FROM_KEY_EVENT_SINK(pThis);
+
+    (void)pic; (void)lParam;
+
+    /* Re-inject Enter after composition was ended by sync edit session.
+     * This runs after OnKeyDown processing is fully complete, so TSF's
+     * keystroke manager state is cleared — critical for games/DirectInput
+     * to receive the injected key. */
+    if ((UINT)wParam == VK_RETURN && ts->enterReinjecting) {
+        ts->enterReinjecting = FALSE;
+        {
+            INPUT inputs[2] = {0};
+            inputs[0].type = INPUT_KEYBOARD;
+            inputs[0].ki.wVk = VK_RETURN;
+            inputs[0].ki.wScan =
+                (WORD)MapVirtualKey(VK_RETURN, MAPVK_VK_TO_VSC);
+            inputs[1].type = INPUT_KEYBOARD;
+            inputs[1].ki.wVk = VK_RETURN;
+            inputs[1].ki.wScan =
+                (WORD)MapVirtualKey(VK_RETURN, MAPVK_VK_TO_VSC);
+            inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+            SendInput(2, inputs, sizeof(INPUT));
+        }
+        *pfEaten = TRUE;
+        return S_OK;
+    }
+
     *pfEaten = FALSE;
     return S_OK;
 }
