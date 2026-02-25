@@ -1,5 +1,8 @@
 ﻿;Created by rayshoo / github.com/rayshoo
 #Requires AutoHotkey v2.0
+;@Ahk2Exe-SetProductVersion %A_AhkVersion%
+
+KolemakVersion := "1.0.0"
 SendMode("Input")
 InstallKeybdHook()
 
@@ -35,6 +38,8 @@ A_TrayMenu.Delete()
 A_TrayMenu.Add("CapsLock to Backspace", ToggleCapsLockRemap)
 A_TrayMenu.Add("Semicolon Swap", ToggleSemicolonSwap)
 A_TrayMenu.Add()
+A_TrayMenu.Add("정보(&A)...", ShowAbout)
+A_TrayMenu.Add()
 A_TrayMenu.AddStandard()
 
 if (CapsLockRemap)
@@ -68,6 +73,11 @@ SaveSetting(key, value) {
 	if !DirExist(dir)
 		DirCreate(dir)
 	IniWrite(value, IniFile, "Settings", key)
+}
+
+ShowAbout(*) {
+	global KolemakVersion
+	MsgBox("Kolemak Portable v" KolemakVersion "`n`nhttps://github.com/rayshoo/kolemak", "Kolemak", "OK Iconi")
 }
 
 ; ============================================================
