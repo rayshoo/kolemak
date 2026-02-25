@@ -259,12 +259,6 @@ static HRESULT STDMETHODCALLTYPE KES_OnTestKeyDown(
 
     (void)pic; (void)lParam;
 
-    /* Eat Enter repeats while async re-inject is pending */
-    if ((UINT)wParam == VK_RETURN && ts->enterReinjecting) {
-        *pfEaten = TRUE;
-        return S_OK;
-    }
-
     *pfEaten = ShouldEatKey(ts, (UINT)wParam, shift);
     return S_OK;
 }
@@ -273,15 +267,7 @@ static HRESULT STDMETHODCALLTYPE KES_OnTestKeyUp(
     ITfKeyEventSink *pThis, ITfContext *pic,
     WPARAM wParam, LPARAM lParam, BOOL *pfEaten)
 {
-    TextService *ts = TS_FROM_KEY_EVENT_SINK(pThis);
-
-    (void)pic; (void)lParam;
-
-    /* Eat the physical Enter keyup to prevent orphaned keyup events */
-    if ((UINT)wParam == VK_RETURN && ts->enterReinjecting) {
-        *pfEaten = TRUE;
-        return S_OK;
-    }
+    (void)pThis; (void)pic; (void)wParam; (void)lParam;
 
     *pfEaten = FALSE;
     return S_OK;
@@ -391,23 +377,19 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
         return S_OK;
     }
 
-    /* Eat Enter repeats while async re-inject is pending */
-    if (vk == VK_RETURN && ts->enterReinjecting) {
-        *pfEaten = TRUE;
-        return S_OK;
-    }
-
     /* Handle Enter: flush composition, end it, re-inject key.
      *
      * Try sync edit session first so EndComposition runs immediately
-     * (required for browsers to process compositionend before Enter).
-     * Then queue a separate async edit session for deferred re-inject.
-     * Re-injecting during OnKeyDown/OnKeyUp doesn't work for games
-     * because TSF's keystroke manager still holds internal state;
-     * the async callback runs completely outside TSF key processing.
+     * (required for browsers to fire compositionend before Enter).
+     * Then queue a separate async edit session for deferred re-inject
+     * via SendInput.  Games need the re-inject to happen outside TSF's
+     * keystroke processing; an async callback satisfies that.
      *
      * If sync is rejected, a single async session handles both
-     * EndComposition and re-inject. */
+     * EndComposition and re-inject.
+     *
+     * The physical Enter keyup passes through as an orphan, which is
+     * harmless — apps act on keydown for Enter, not keyup. */
     if (vk == VK_RETURN && ts->hangulCtx.state != HANGUL_STATE_EMPTY)
     {
         HangulResult result = hangul_ic_flush(&ts->hangulCtx);
@@ -455,8 +437,6 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
             }
         }
 
-        /* Eat both keydown and keyup; async callback will re-inject */
-        ts->enterReinjecting = TRUE;
         *pfEaten = TRUE;
         return S_OK;
     }
@@ -605,16 +585,7 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyUp(
     ITfKeyEventSink *pThis, ITfContext *pic,
     WPARAM wParam, LPARAM lParam, BOOL *pfEaten)
 {
-    TextService *ts = TS_FROM_KEY_EVENT_SINK(pThis);
-
-    (void)pic; (void)lParam;
-
-    /* Clear Enter re-inject flag; actual re-inject comes from async callback */
-    if ((UINT)wParam == VK_RETURN && ts->enterReinjecting) {
-        ts->enterReinjecting = FALSE;
-        *pfEaten = TRUE;
-        return S_OK;
-    }
+    (void)pThis; (void)pic; (void)wParam; (void)lParam;
 
     *pfEaten = FALSE;
     return S_OK;
