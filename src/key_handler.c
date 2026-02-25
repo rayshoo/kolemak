@@ -379,17 +379,20 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
 
     /* Handle Enter: flush composition, end it, re-inject key.
      *
-     * Try sync edit session first so EndComposition runs immediately
-     * (required for browsers to fire compositionend before Enter).
-     * Then queue a separate async edit session for deferred re-inject
-     * via SendInput.  Games need the re-inject to happen outside TSF's
-     * keystroke processing; an async callback satisfies that.
+     * Two re-inject mechanisms are used simultaneously:
      *
-     * If sync is rejected, a single async session handles both
-     * EndComposition and re-inject.
+     * 1) Immediate SendInput — delivers Enter during the current TSF
+     *    key processing cycle.  Browsers and KakaoTalk process this
+     *    for form submission / message send.
      *
-     * The physical Enter keyup passes through as an orphan, which is
-     * harmless — apps act on keydown for Enter, not keyup. */
+     * 2) Async edit session with reinjectVk — delivers Enter from a
+     *    callback that runs outside TSF's keystroke manager.  Games
+     *    ignore the immediate SendInput but process this deferred one.
+     *
+     * Apps that handle the immediate Enter (browsers, KakaoTalk) will
+     * see a second Enter from the async callback, but it arrives after
+     * the action (page navigated / message sent), hitting an empty
+     * input field — harmless. */
     if (vk == VK_RETURN && ts->hangulCtx.state != HANGUL_STATE_EMPTY)
     {
         HangulResult result = hangul_ic_flush(&ts->hangulCtx);
@@ -407,10 +410,7 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
                 &hrSession);
 
             if (hr == TF_E_SYNCHRONOUS) {
-                /* Sync not available (e.g. games): single async session
-                 * handles both EndComposition and re-inject in one callback.
-                 * The re-inject arrives AFTER EndComposition — critical for
-                 * apps that ignore Enter while composition is active. */
+                /* Sync not available: async handles EndComposition + reinject */
                 es->reinjectVk = VK_RETURN;
                 pic->lpVtbl->RequestEditSession(
                     pic, ts->clientId,
@@ -420,24 +420,40 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
                 es->lpVtbl->Release((ITfEditSession *)es);
             } else {
                 /* Sync succeeded: composition ended immediately.
-                 * Re-inject Enter right now via SendInput — browsers
-                 * need the Enter to arrive in the same event cycle as
-                 * compositionend for form submission to work. */
+                 * Queue async for deferred reinject (needed by games). */
                 es->lpVtbl->Release((ITfEditSession *)es);
                 {
-                    INPUT inputs[2] = {0};
-                    inputs[0].type = INPUT_KEYBOARD;
-                    inputs[0].ki.wVk = VK_RETURN;
-                    inputs[0].ki.wScan =
-                        (WORD)MapVirtualKey(VK_RETURN, MAPVK_VK_TO_VSC);
-                    inputs[1].type = INPUT_KEYBOARD;
-                    inputs[1].ki.wVk = VK_RETURN;
-                    inputs[1].ki.wScan =
-                        (WORD)MapVirtualKey(VK_RETURN, MAPVK_VK_TO_VSC);
-                    inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
-                    SendInput(2, inputs, sizeof(INPUT));
+                    EditSession *esR = NULL;
+                    hr = EditSession_Create(ts, pic, ES_HANDLE_RESULT, &esR);
+                    if (SUCCEEDED(hr)) {
+                        esR->data.hangulResult.type = HANGUL_RESULT_PASS;
+                        esR->reinjectVk = VK_RETURN;
+                        pic->lpVtbl->RequestEditSession(
+                            pic, ts->clientId,
+                            (ITfEditSession *)esR,
+                            TF_ES_ASYNC | TF_ES_READWRITE,
+                            &hrSession);
+                        esR->lpVtbl->Release((ITfEditSession *)esR);
+                    }
                 }
             }
+        }
+
+        /* Immediate re-inject for apps that handle Enter during TSF
+         * key processing (browsers, KakaoTalk).  Games ignore this;
+         * the async callback above covers them. */
+        {
+            INPUT inputs[2] = {0};
+            inputs[0].type = INPUT_KEYBOARD;
+            inputs[0].ki.wVk = VK_RETURN;
+            inputs[0].ki.wScan =
+                (WORD)MapVirtualKey(VK_RETURN, MAPVK_VK_TO_VSC);
+            inputs[1].type = INPUT_KEYBOARD;
+            inputs[1].ki.wVk = VK_RETURN;
+            inputs[1].ki.wScan =
+                (WORD)MapVirtualKey(VK_RETURN, MAPVK_VK_TO_VSC);
+            inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+            SendInput(2, inputs, sizeof(INPUT));
         }
 
         *pfEaten = TRUE;
