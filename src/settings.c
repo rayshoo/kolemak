@@ -101,6 +101,16 @@ void Settings_ReloadPrefs(TextService *ts)
     if (ReadRegDWORD(hKey, KOLEMAK_REG_WINKEY_REMAP, &val))
         ts->winKeyRemap = (val != 0);
 
+    /* Sync colemakMode from registry (cross-process toggle sync) */
+    if (ReadRegDWORD(hKey, KOLEMAK_REG_COLEMAK_MODE, &val)) {
+        BOOL newMode = (val != 0);
+        if (ts->colemakMode != newMode) {
+            ts->colemakMode = newMode;
+            if (ts->langBarButton)
+                LangBarButton_UpdateState(ts->langBarButton);
+        }
+    }
+
     /* Re-register preserved key if hotkey changed (e.g. by another process) */
     oldHotkeyVk = ts->hotkeyVk;
     oldHotkeyMod = ts->hotkeyModifiers;

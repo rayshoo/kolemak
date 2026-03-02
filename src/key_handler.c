@@ -88,6 +88,21 @@ static void FlushAndToggleColemak(TextService *ts)
         }
     }
     ts->colemakMode = !ts->colemakMode;
+
+    /* Sync to registry for cross-process consistency.
+     * Other processes pick this up via Settings_ReloadPrefs
+     * when they receive focus. */
+    {
+        HKEY hKey;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, KOLEMAK_REG_KEY,
+                          0, KEY_WRITE, &hKey) == ERROR_SUCCESS) {
+            DWORD val = ts->colemakMode ? 1 : 0;
+            RegSetValueExW(hKey, KOLEMAK_REG_COLEMAK_MODE, 0, REG_DWORD,
+                           (const BYTE *)&val, sizeof(DWORD));
+            RegCloseKey(hKey);
+        }
+    }
+
     KolemakTooltip_Show(ts->colemakMode ? L"Colemak" : L"QWERTY");
     if (ts->langBarButton)
         LangBarButton_UpdateState(ts->langBarButton);
