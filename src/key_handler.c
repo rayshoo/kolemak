@@ -60,12 +60,84 @@ static void SyncCapsLockState(TextService *ts)
     }
 }
 
+/* ===== WH_KEYBOARD_LL hook for Win+key Colemak remapping =====
+ *
+ * Remaps Win+alpha keyboard shortcuts at the lowest level so that
+ * Windows shell hotkeys (Win+E, Win+R, Win+D, etc.) follow Colemak
+ * layout.  WH_GETMESSAGE cannot intercept these because the shell
+ * processes Win+key combos before messages reach the app queue. */
+
+/* Track which keys have been remapped (for correct keyup handling).
+ * Index = original VK, value = remapped VK (0 = not remapped). */
+static BYTE s_llRemappedKeys[256];
+
+LRESULT CALLBACK KolemakLowLevelKeyboardProc(int nCode, WPARAM wParam,
+                                              LPARAM lParam)
+{
+    if (nCode == HC_ACTION) {
+        KBDLLHOOKSTRUCT *kb = (KBDLLHOOKSTRUCT *)lParam;
+
+        /* Skip events we injected ourselves */
+        if (kb->dwExtraInfo == KOLEMAK_LL_INJECTED)
+            return CallNextHookEx(NULL, nCode, wParam, lParam);
+
+        if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
+            TextService *ts = (TextService *)TlsGetValue(g_tlsIndex);
+            if (ts && ts->colemakMode) {
+                BOOL winHeld =
+                    (GetAsyncKeyState(VK_LWIN) & 0x8000) != 0 ||
+                    (GetAsyncKeyState(VK_RWIN) & 0x8000) != 0;
+
+                if (winHeld) {
+                    UINT vk = kb->vkCode;
+                    UINT remapped = keymap_get_colemak_vk(vk);
+
+                    if (remapped != vk && vk < 256) {
+                        INPUT input = {0};
+                        s_llRemappedKeys[vk] = (BYTE)remapped;
+                        input.type = INPUT_KEYBOARD;
+                        input.ki.wVk = (WORD)remapped;
+                        input.ki.wScan =
+                            (WORD)MapVirtualKey(remapped, MAPVK_VK_TO_VSC);
+                        input.ki.dwExtraInfo = KOLEMAK_LL_INJECTED;
+                        SendInput(1, &input, sizeof(INPUT));
+                        return 1;  /* Block original key */
+                    }
+                }
+            }
+        }
+        else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP) {
+            UINT vk = kb->vkCode;
+
+            /* Release tracked remap regardless of current Win state */
+            if (vk < 256 && s_llRemappedKeys[vk]) {
+                UINT remapped = s_llRemappedKeys[vk];
+                INPUT input = {0};
+                s_llRemappedKeys[vk] = 0;
+                input.type = INPUT_KEYBOARD;
+                input.ki.wVk = (WORD)remapped;
+                input.ki.wScan =
+                    (WORD)MapVirtualKey(remapped, MAPVK_VK_TO_VSC);
+                input.ki.dwFlags = KEYEVENTF_KEYUP;
+                input.ki.dwExtraInfo = KOLEMAK_LL_INJECTED;
+                SendInput(1, &input, sizeof(INPUT));
+                return 1;
+            }
+        }
+    }
+    return CallNextHookEx(NULL, nCode, wParam, lParam);
+}
+
 /* ===== WH_GETMESSAGE hook for modifier+key Colemak VK remapping =====
  *
  * Remaps VK codes in WM_KEYDOWN/WM_SYSKEYDOWN messages BEFORE TSF's
  * keystroke manager processes them.  This ensures Colemak shortcuts
  * work correctly in Korean mode, where TSF may skip OnTestKeyDown
- * for Ctrl+letter combinations. */
+ * for Ctrl+letter combinations.
+ *
+ * Win+key remapping is handled by WH_KEYBOARD_LL instead (see above),
+ * because Win+key shell shortcuts are consumed before reaching the
+ * app queue. */
 LRESULT CALLBACK KolemakGetMsgProc(int code, WPARAM wParam, LPARAM lParam)
 {
     if (code == HC_ACTION && wParam == PM_REMOVE) {
@@ -129,8 +201,10 @@ LRESULT CALLBACK KolemakGetMsgProc(int code, WPARAM wParam, LPARAM lParam)
                         return CallNextHookEx(NULL, code, wParam, lParam);
                     }
 
-                    /* Remap modifier+alpha for Colemak shortcuts */
-                    if (ts->colemakMode) {
+                    /* Remap modifier+alpha for Colemak shortcuts.
+                     * Skip when Win is held — WH_KEYBOARD_LL handles
+                     * Win+key to avoid double-remapping. */
+                    if (ts->colemakMode && !win) {
                         remapped = keymap_get_colemak_vk(vk);
                         if (remapped != vk) {
                             UINT newScan = MapVirtualKey(remapped,

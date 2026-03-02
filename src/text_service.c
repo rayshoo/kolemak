@@ -223,6 +223,10 @@ static HRESULT STDMETHODCALLTYPE TS_Deactivate(
 {
     TextService *ts = TS_FROM_TIP(pThis);
 
+    if (ts->llKeyboardHook) {
+        UnhookWindowsHookEx(ts->llKeyboardHook);
+        ts->llKeyboardHook = NULL;
+    }
     if (ts->msgHook) {
         UnhookWindowsHookEx(ts->msgHook);
         ts->msgHook = NULL;
@@ -300,6 +304,14 @@ static HRESULT STDMETHODCALLTYPE TS_ActivateEx(
         TlsSetValue(g_tlsIndex, ts);
         ts->msgHook = SetWindowsHookExW(WH_GETMESSAGE, KolemakGetMsgProc,
                                          NULL, GetCurrentThreadId());
+
+        /* Install low-level keyboard hook for Win+key Colemak remapping.
+         * Shell hotkeys (Win+E, Win+R, etc.) are processed before messages
+         * reach the app queue, so WH_GETMESSAGE can't intercept them.
+         * WH_KEYBOARD_LL runs before the shell sees the keys. */
+        ts->llKeyboardHook = SetWindowsHookExW(
+            WH_KEYBOARD_LL, KolemakLowLevelKeyboardProc,
+            g_hInst, 0);
     }
 
     return S_OK;
