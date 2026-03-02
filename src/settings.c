@@ -78,6 +78,7 @@ void Settings_ReloadPrefs(TextService *ts)
     HKEY hKey = NULL;
     LONG ret;
     DWORD val;
+    UINT oldHotkeyVk, oldHotkeyMod;
 
     ret = RegOpenKeyExW(HKEY_CURRENT_USER, KOLEMAK_REG_KEY,
                         0, KEY_READ, &hKey);
@@ -92,6 +93,39 @@ void Settings_ReloadPrefs(TextService *ts)
 
     if (ReadRegDWORD(hKey, KOLEMAK_REG_CAPSLOCK_STATE, &val))
         ts->capsLockOn = (val != 0);
+
+    /* Re-register preserved key if hotkey changed (e.g. by another process) */
+    oldHotkeyVk = ts->hotkeyVk;
+    oldHotkeyMod = ts->hotkeyModifiers;
+
+    if (ReadRegDWORD(hKey, KOLEMAK_REG_HOTKEY_VK, &val))
+        ts->hotkeyVk = val;
+    if (ReadRegDWORD(hKey, KOLEMAK_REG_HOTKEY_MOD, &val))
+        ts->hotkeyModifiers = val;
+
+    if (ts->hotkeyVk != oldHotkeyVk || ts->hotkeyModifiers != oldHotkeyMod) {
+        ITfKeystrokeMgr *pKeyMgr = NULL;
+        if (ts->threadMgr &&
+            SUCCEEDED(ts->threadMgr->lpVtbl->QueryInterface(
+                ts->threadMgr, &IID_ITfKeystrokeMgr, (void **)&pKeyMgr)))
+        {
+            TF_PRESERVEDKEY pkOld, pkNew;
+            pkOld.uVKey = oldHotkeyVk;
+            pkOld.uModifiers = oldHotkeyMod;
+            pKeyMgr->lpVtbl->UnpreserveKey(
+                pKeyMgr,
+                &GUID_KolemakPreservedKey_ColemakToggle, &pkOld);
+
+            pkNew.uVKey = (UINT)ts->hotkeyVk;
+            pkNew.uModifiers = (UINT)ts->hotkeyModifiers;
+            pKeyMgr->lpVtbl->PreserveKey(
+                pKeyMgr, ts->clientId,
+                &GUID_KolemakPreservedKey_ColemakToggle,
+                &pkNew, KOLEMAK_DESC, KOLEMAK_DESC_LEN);
+
+            pKeyMgr->lpVtbl->Release(pKeyMgr);
+        }
+    }
 
     RegCloseKey(hKey);
 }

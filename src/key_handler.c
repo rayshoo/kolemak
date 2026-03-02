@@ -60,6 +60,39 @@ static void SyncCapsLockState(TextService *ts)
     }
 }
 
+/* ===== WH_GETMESSAGE hook for modifier+key Colemak VK remapping =====
+ *
+ * Remaps VK codes in WM_KEYDOWN/WM_SYSKEYDOWN messages BEFORE TSF's
+ * keystroke manager processes them.  This ensures Colemak shortcuts
+ * work correctly in Korean mode, where TSF may skip OnTestKeyDown
+ * for Ctrl+letter combinations. */
+LRESULT CALLBACK KolemakGetMsgProc(int code, WPARAM wParam, LPARAM lParam)
+{
+    if (code == HC_ACTION && wParam == PM_REMOVE) {
+        MSG *msg = (MSG *)lParam;
+        if (msg->message == WM_KEYDOWN || msg->message == WM_SYSKEYDOWN) {
+            TextService *ts = (TextService *)TlsGetValue(g_tlsIndex);
+            if (ts && ts->colemakMode) {
+                BOOL ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+                BOOL alt  = (GetKeyState(VK_MENU) & 0x8000) != 0;
+                BOOL win  = ((GetKeyState(VK_LWIN) & 0x8000) |
+                             (GetKeyState(VK_RWIN) & 0x8000)) != 0;
+                if (ctrl || alt || win) {
+                    UINT vk = (UINT)msg->wParam;
+                    UINT remapped = keymap_get_colemak_vk(vk);
+                    if (remapped != vk) {
+                        UINT newScan = MapVirtualKey(remapped, MAPVK_VK_TO_VSC);
+                        msg->wParam = remapped;
+                        msg->lParam = (msg->lParam & ~(0xFFu << 16))
+                                    | ((LPARAM)newScan << 16);
+                    }
+                }
+            }
+        }
+    }
+    return CallNextHookEx(NULL, code, wParam, lParam);
+}
+
 /* Check if a key should be eaten */
 static BOOL ShouldEatKey(TextService *ts, UINT vk, BOOL shift)
 {
@@ -71,23 +104,17 @@ static BOOL ShouldEatKey(TextService *ts, UINT vk, BOOL shift)
     if (ts->capsLockAsBackspace && vk == VK_CAPITAL)
         return TRUE;
 
-    /* When a modifier (Ctrl/Alt/Win) is held, pass shortcuts through.
-     * In Colemak mode, eat keys that need VK remapping so we can
-     * remap them in OnKeyDown (e.g. physical K → Ctrl+E). */
+    /* When a modifier (Ctrl/Alt/Win) is held, VK remapping is already
+     * handled by the WH_GETMESSAGE hook (KolemakGetMsgProc).
+     * Only eat the key if Korean composition needs flushing. */
     {
         BOOL ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
         BOOL alt  = (GetKeyState(VK_MENU) & 0x8000) != 0;
         BOOL win  = ((GetKeyState(VK_LWIN) & 0x8000) |
                      (GetKeyState(VK_RWIN) & 0x8000)) != 0;
         if (ctrl || alt || win) {
-            if (ts->colemakMode) {
-                if (ts->colemakRemapVk == vk) {
-                    ts->colemakRemapVk = 0;
-                    return FALSE;  /* Our remapped key coming back */
-                }
-                if (keymap_get_colemak_vk(vk) != vk)
-                    return TRUE;   /* Needs VK remapping */
-            }
+            if (ts->koreanMode && ts->hangulCtx.state != HANGUL_STATE_EMPTY)
+                return TRUE;   /* Eat to flush composition in OnKeyDown */
             return FALSE;
         }
     }
@@ -527,15 +554,15 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
         return S_OK;
     }
 
-    /* Modifier shortcuts: remap VK codes in Colemak mode,
-     * otherwise let shortcuts pass through unchanged. */
+    /* Modifier shortcuts: VK remapping is done by WH_GETMESSAGE hook.
+     * Here we only flush Korean composition, then let the (already
+     * remapped) key pass through to the application. */
     {
         BOOL ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
         BOOL alt  = (GetKeyState(VK_MENU) & 0x8000) != 0;
         BOOL win  = ((GetKeyState(VK_LWIN) & 0x8000) |
                      (GetKeyState(VK_RWIN) & 0x8000)) != 0;
         if (ctrl || alt || win) {
-            /* Flush composition before passing modifier shortcut */
             if (ts->koreanMode &&
                 ts->hangulCtx.state != HANGUL_STATE_EMPTY)
             {
@@ -546,34 +573,6 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
                     es->data.hangulResult = result;
                     RequestEditSession(ts, pic, ES_HANDLE_RESULT, es);
                     es->lpVtbl->Release((ITfEditSession *)es);
-                }
-            }
-            if (ts->colemakMode) {
-                if (ts->colemakRemapVk == vk) {
-                    /* Our remapped key coming back, pass through */
-                    ts->colemakRemapVk = 0;
-                    *pfEaten = FALSE;
-                    return S_OK;
-                }
-                {
-                    UINT remapped = keymap_get_colemak_vk(vk);
-                    if (remapped != vk) {
-                        INPUT inputs[2];
-                        memset(inputs, 0, sizeof(inputs));
-                        ts->colemakRemapVk = remapped;
-                        inputs[0].type = INPUT_KEYBOARD;
-                        inputs[0].ki.wVk = (WORD)remapped;
-                        inputs[0].ki.wScan =
-                            (WORD)MapVirtualKey(remapped, MAPVK_VK_TO_VSC);
-                        inputs[1].type = INPUT_KEYBOARD;
-                        inputs[1].ki.wVk = (WORD)remapped;
-                        inputs[1].ki.wScan =
-                            (WORD)MapVirtualKey(remapped, MAPVK_VK_TO_VSC);
-                        inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
-                        SendInput(2, inputs, sizeof(INPUT));
-                        *pfEaten = TRUE;
-                        return S_OK;
-                    }
                 }
             }
             *pfEaten = FALSE;
@@ -636,10 +635,7 @@ static HRESULT STDMETHODCALLTYPE KES_OnPreservedKey(
         }
 
         ts->koreanMode = !ts->koreanMode;
-        /* Note: keyboard open/close compartment is NOT changed here.
-         * Keeping it always "closed" ensures TSF routes Ctrl+letter
-         * shortcuts through our key event sink for Colemak VK remapping.
-         * Korean input works regardless since we handle it internally. */
+        TextService_SetKeyboardOpen(ts, ts->koreanMode);
         if (ts->langBarButton)
             LangBarButton_UpdateState(ts->langBarButton);
         *pfEaten = TRUE;

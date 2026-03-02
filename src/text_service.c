@@ -223,6 +223,13 @@ static HRESULT STDMETHODCALLTYPE TS_Deactivate(
 {
     TextService *ts = TS_FROM_TIP(pThis);
 
+    if (ts->msgHook) {
+        UnhookWindowsHookEx(ts->msgHook);
+        ts->msgHook = NULL;
+    }
+    if (g_tlsIndex != TLS_OUT_OF_INDEXES)
+        TlsSetValue(g_tlsIndex, NULL);
+
     LangBar_Unregister(ts);
     KolemakTray_Unregister(ts);
     TS_UnregisterPreservedKey(ts);
@@ -285,6 +292,15 @@ static HRESULT STDMETHODCALLTYPE TS_ActivateEx(
 
     /* Set initial keyboard open/close state for system tray indicator */
     TextService_SetKeyboardOpen(ts, ts->koreanMode);
+
+    /* Install per-thread message hook for Colemak modifier+key remapping.
+     * This remaps VK codes in WM_KEYDOWN before TSF processes them,
+     * ensuring correct behavior regardless of keyboard open/close state. */
+    if (g_tlsIndex != TLS_OUT_OF_INDEXES) {
+        TlsSetValue(g_tlsIndex, ts);
+        ts->msgHook = SetWindowsHookExW(WH_GETMESSAGE, KolemakGetMsgProc,
+                                         NULL, GetCurrentThreadId());
+    }
 
     return S_OK;
 
