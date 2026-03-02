@@ -79,12 +79,23 @@ LRESULT CALLBACK KolemakGetMsgProc(int code, WPARAM wParam, LPARAM lParam)
                              (GetKeyState(VK_RWIN) & 0x8000)) != 0;
                 if (ctrl || alt || win) {
                     UINT vk = (UINT)msg->wParam;
-                    UINT remapped = keymap_get_colemak_vk(vk);
-                    if (remapped != vk) {
-                        UINT newScan = MapVirtualKey(remapped, MAPVK_VK_TO_VSC);
-                        msg->wParam = remapped;
-                        msg->lParam = (msg->lParam & ~(0xFFu << 16))
-                                    | ((LPARAM)newScan << 16);
+                    UINT mods = 0;
+                    UINT remapped;
+
+                    /* Build TF_MOD flags to check against toggle hotkey */
+                    if (ctrl) mods |= TF_MOD_CONTROL;
+                    if (alt)  mods |= TF_MOD_ALT;
+                    if (GetKeyState(VK_SHIFT) & 0x8000) mods |= TF_MOD_SHIFT;
+
+                    /* Don't remap the Colemak toggle hotkey itself */
+                    if (vk != ts->hotkeyVk || mods != ts->hotkeyModifiers) {
+                        remapped = keymap_get_colemak_vk(vk);
+                        if (remapped != vk) {
+                            UINT newScan = MapVirtualKey(remapped, MAPVK_VK_TO_VSC);
+                            msg->wParam = remapped;
+                            msg->lParam = (msg->lParam & ~(0xFFu << 16))
+                                        | ((LPARAM)newScan << 16);
+                        }
                     }
                 }
             }
