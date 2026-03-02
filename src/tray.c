@@ -10,6 +10,7 @@
 #include <shellapi.h>
 #include "tray.h"
 #include "settings.h"
+#include "keymap.h"
 #include "resource.h"
 #include "version.h"
 
@@ -64,8 +65,10 @@ static void FormatHotkey(UINT mod, UINT vk, WCHAR *buf, int bufLen)
     if (vk == VK_SPACE) {
         lstrcatW(buf, L"Space");
     } else if (vk >= 'A' && vk <= 'Z') {
-        WCHAR ch[2] = { (WCHAR)vk, 0 };
-        lstrcatW(buf, ch);
+        /* Show physical VK hex to avoid Colemak/QWERTY ambiguity */
+        WCHAR tmp[16];
+        wsprintfW(tmp, L"0x%02X", vk);
+        lstrcatW(buf, tmp);
     } else if (vk >= VK_F1 && vk <= VK_F24) {
         WCHAR tmp[8];
         wsprintfW(tmp, L"F%d", vk - VK_F1 + 1);
@@ -147,11 +150,14 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg,
                 /* Must have at least one modifier */
                 if (mod == 0) return 0;
 
-                sd->capturedVk = vk;
+                /* Recover physical VK: the WH_GETMESSAGE hook may
+                 * have Colemak-remapped the VK before we see it. */
+                sd->capturedVk = sd->ts->colemakMode
+                    ? keymap_get_qwerty_vk(vk) : vk;
                 sd->capturedMod = mod;
                 sd->capturing = FALSE;
 
-                FormatHotkey(mod, vk, buf, 64);
+                FormatHotkey(mod, sd->capturedVk, buf, 64);
                 SetWindowTextW(sd->lblHotkeyVal, buf);
                 SetWindowTextW(sd->btnHotkey,
                     L"\xBCC0\xACBD...");  /* 변경... */

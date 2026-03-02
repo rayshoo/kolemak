@@ -80,22 +80,19 @@ LRESULT CALLBACK KolemakGetMsgProc(int code, WPARAM wParam, LPARAM lParam)
                 if (ctrl || alt || win) {
                     UINT vk = (UINT)msg->wParam;
                     UINT mods = 0;
-                    UINT effectiveVk;
+                    UINT remapped;
                     BOOL isRepeat = (msg->lParam >> 30) & 1;
 
                     if (ctrl) mods |= TF_MOD_CONTROL;
                     if (alt)  mods |= TF_MOD_ALT;
                     if (GetKeyState(VK_SHIFT) & 0x8000) mods |= TF_MOD_SHIFT;
 
-                    /* Effective VK after Colemak remap (same as raw in QWERTY) */
-                    effectiveVk = ts->colemakMode
-                        ? keymap_get_colemak_vk(vk) : vk;
-
-                    /* Handle Colemak toggle hotkey directly in the hook.
-                     * TSF's PreservedKey doesn't see hook-modified wParam,
-                     * so we must handle the toggle here. */
+                    /* Handle Colemak toggle hotkey (physical key basis).
+                     * hotkeyVk stores the physical VK, so compare against
+                     * the raw (pre-remap) VK for consistent toggling
+                     * regardless of current Colemak/QWERTY mode. */
                     if (!isRepeat &&
-                        effectiveVk == ts->hotkeyVk &&
+                        vk == ts->hotkeyVk &&
                         mods == ts->hotkeyModifiers) {
                         if (ts->hangulCtx.state != HANGUL_STATE_EMPTY) {
                             HangulResult result =
@@ -133,12 +130,15 @@ LRESULT CALLBACK KolemakGetMsgProc(int code, WPARAM wParam, LPARAM lParam)
                     }
 
                     /* Remap modifier+alpha for Colemak shortcuts */
-                    if (ts->colemakMode && effectiveVk != vk) {
-                        UINT newScan = MapVirtualKey(effectiveVk,
-                                                     MAPVK_VK_TO_VSC);
-                        msg->wParam = effectiveVk;
-                        msg->lParam = (msg->lParam & ~(0xFFu << 16))
-                                    | ((LPARAM)newScan << 16);
+                    if (ts->colemakMode) {
+                        remapped = keymap_get_colemak_vk(vk);
+                        if (remapped != vk) {
+                            UINT newScan = MapVirtualKey(remapped,
+                                                         MAPVK_VK_TO_VSC);
+                            msg->wParam = remapped;
+                            msg->lParam = (msg->lParam & ~(0xFFu << 16))
+                                        | ((LPARAM)newScan << 16);
+                        }
                     }
                 }
             }
