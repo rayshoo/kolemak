@@ -83,7 +83,7 @@ LRESULT CALLBACK KolemakLowLevelKeyboardProc(int nCode, WPARAM wParam,
 
         if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
             TextService *ts = (TextService *)TlsGetValue(g_tlsIndex);
-            if (ts && ts->colemakMode) {
+            if (ts && ts->colemakMode && ts->winKeyRemap) {
                 BOOL winHeld =
                     (GetAsyncKeyState(VK_LWIN) & 0x8000) != 0 ||
                     (GetAsyncKeyState(VK_RWIN) & 0x8000) != 0;

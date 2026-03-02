@@ -33,6 +33,7 @@
 /* Settings dialog control IDs */
 #define IDC_CHK_CAPSLOCK    2001
 #define IDC_CHK_SEMICOLON   2002
+#define IDC_CHK_WINKEY      2007
 #define IDC_LBL_HOTKEY_VAL  2003
 #define IDC_BTN_HOTKEY      2004
 #define IDC_BTN_OK          2005
@@ -89,6 +90,7 @@ typedef struct {
     TextService *ts;
     HWND chkCapsLock;
     HWND chkSemicolon;
+    HWND chkWinKey;
     HWND lblHotkeyVal;
     HWND btnHotkey;
     HFONT hFont;
@@ -181,6 +183,9 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg,
                      == BST_CHECKED);
                 ts->semicolonSwap =
                     (SendMessageW(sd->chkSemicolon, BM_GETCHECK, 0, 0)
+                     == BST_CHECKED);
+                ts->winKeyRemap =
+                    (SendMessageW(sd->chkWinKey, BM_GETCHECK, 0, 0)
                      == BST_CHECKED);
 
                 /* If hotkey was changed, re-register preserved key */
@@ -321,7 +326,7 @@ static void ShowSettingsDialog(void)
         SETTINGS_WND_CLASS,
         L"Kolemak \xC124\xC815",  /* Kolemak 설정 */
         WS_POPUP | WS_CAPTION | WS_SYSMENU,
-        0, 0, D(350), D(240),
+        0, 0, D(350), D(275),
         NULL, NULL, g_hInst, &sd);
 
     if (!hwnd) return;
@@ -365,11 +370,22 @@ static void ShowSettingsDialog(void)
     if (ts->semicolonSwap)
         SendMessageW(sd.chkSemicolon, BM_SETCHECK, BST_CHECKED, 0);
 
+    /* Win+key remap checkbox */
+    sd.chkWinKey = CreateWindowExW(0, L"BUTTON",
+        /* Win+키 Colemak 리맵 */
+        L"Win+\xD0A4 Colemak \xB9AC\xB9F5",
+        WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+        D(20), D(90), D(300), D(25),
+        hwnd, (HMENU)(UINT_PTR)IDC_CHK_WINKEY, NULL, NULL);
+    SendMessageW(sd.chkWinKey, WM_SETFONT, (WPARAM)sd.hFont, TRUE);
+    if (ts->winKeyRemap)
+        SendMessageW(sd.chkWinKey, BM_SETCHECK, BST_CHECKED, 0);
+
     /* Hotkey title label */
     lblHotkeyTitle = CreateWindowExW(0, L"STATIC",
         L"Colemak/QWERTY \xC804\xD658 \xB2E8\xCD95\xD0A4:",  /* 전환 단축키: */
         WS_CHILD | WS_VISIBLE | SS_LEFT,
-        D(20), D(100), D(200), D(20),
+        D(20), D(135), D(200), D(20),
         hwnd, NULL, NULL, NULL);
     SendMessageW(lblHotkeyTitle, WM_SETFONT, (WPARAM)sd.hFont, TRUE);
 
@@ -377,7 +393,7 @@ static void ShowSettingsDialog(void)
     FormatHotkey(ts->hotkeyModifiers, ts->hotkeyVk, hotkeyBuf, 64);
     sd.lblHotkeyVal = CreateWindowExW(0, L"STATIC", hotkeyBuf,
         WS_CHILD | WS_VISIBLE | SS_LEFT,
-        D(20), D(122), D(200), D(20),
+        D(20), D(157), D(200), D(20),
         hwnd, (HMENU)(UINT_PTR)IDC_LBL_HOTKEY_VAL, NULL, NULL);
     SendMessageW(sd.lblHotkeyVal, WM_SETFONT, (WPARAM)sd.hFont, TRUE);
 
@@ -385,7 +401,7 @@ static void ShowSettingsDialog(void)
     sd.btnHotkey = CreateWindowExW(0, L"BUTTON",
         L"\xBCC0\xACBD...",  /* 변경... */
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        D(230), D(118), D(80), D(28),
+        D(230), D(153), D(80), D(28),
         hwnd, (HMENU)(UINT_PTR)IDC_BTN_HOTKEY, NULL, NULL);
     SendMessageW(sd.btnHotkey, WM_SETFONT, (WPARAM)sd.hFont, TRUE);
 
@@ -393,7 +409,7 @@ static void ShowSettingsDialog(void)
     btnOk = CreateWindowExW(0, L"BUTTON",
         L"\xD655\xC778",  /* 확인 */
         WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
-        D(80), D(165), D(80), D(32),
+        D(80), D(200), D(80), D(32),
         hwnd, (HMENU)(UINT_PTR)IDC_BTN_OK, NULL, NULL);
     SendMessageW(btnOk, WM_SETFONT, (WPARAM)sd.hFont, TRUE);
 
@@ -401,7 +417,7 @@ static void ShowSettingsDialog(void)
     btnCancel = CreateWindowExW(0, L"BUTTON",
         L"\xCDE8\xC18C",  /* 취소 */
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        D(180), D(165), D(80), D(32),
+        D(180), D(200), D(80), D(32),
         hwnd, (HMENU)(UINT_PTR)IDC_BTN_CANCEL, NULL, NULL);
     SendMessageW(btnCancel, WM_SETFONT, (WPARAM)sd.hFont, TRUE);
 
