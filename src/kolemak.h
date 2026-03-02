@@ -118,6 +118,15 @@ LRESULT CALLBACK KolemakLowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lP
 /* Marker for events injected by the LL keyboard hook */
 #define KOLEMAK_LL_INJECTED 0x4B4F4C45UL  /* "KOLE" */
 
+/* Win modifier flag for hotkey system (TF_MOD_* doesn't include Win) */
+#ifndef TF_MOD_WIN
+#define TF_MOD_WIN 0x0040
+#endif
+#define KOLEMAK_MOD_WIN TF_MOD_WIN
+
+/* Global capture window for Win+key hotkey capture in settings dialog */
+extern HWND g_captureHwnd;
+
 /* ===== Edit session ===== */
 
 typedef enum {

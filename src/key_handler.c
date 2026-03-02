@@ -60,71 +60,178 @@ static void SyncCapsLockState(TextService *ts)
     }
 }
 
+/* ===== Toggle helper (shared by LL hook and WH_GETMESSAGE hook) ===== */
+
+static void FlushAndToggleColemak(TextService *ts)
+{
+    if (ts->hangulCtx.state != HANGUL_STATE_EMPTY) {
+        HangulResult result = hangul_ic_flush(&ts->hangulCtx);
+        ITfDocumentMgr *docMgr = NULL;
+        if (ts->threadMgr &&
+            SUCCEEDED(ts->threadMgr->lpVtbl->GetFocus(
+                ts->threadMgr, &docMgr)) && docMgr) {
+            ITfContext *ctx = NULL;
+            if (SUCCEEDED(docMgr->lpVtbl->GetTop(
+                    docMgr, &ctx)) && ctx) {
+                EditSession *es = NULL;
+                HRESULT hr = EditSession_Create(ts, ctx,
+                    ES_HANDLE_RESULT, &es);
+                if (SUCCEEDED(hr)) {
+                    es->data.hangulResult = result;
+                    RequestEditSession(ts, ctx,
+                        ES_HANDLE_RESULT, es);
+                    es->lpVtbl->Release((ITfEditSession *)es);
+                }
+                ctx->lpVtbl->Release(ctx);
+            }
+            docMgr->lpVtbl->Release(docMgr);
+        }
+    }
+    ts->colemakMode = !ts->colemakMode;
+    KolemakTooltip_Show(ts->colemakMode ? L"Colemak" : L"QWERTY");
+    if (ts->langBarButton)
+        LangBarButton_UpdateState(ts->langBarButton);
+}
+
 /* ===== WH_KEYBOARD_LL hook for Win+key Colemak remapping =====
  *
  * Remaps Win+alpha keyboard shortcuts at the lowest level so that
  * Windows shell hotkeys (Win+E, Win+R, Win+D, etc.) follow Colemak
- * layout.  WH_GETMESSAGE cannot intercept these because the shell
- * processes Win+key combos before messages reach the app queue. */
+ * layout.  Also handles Win+key toggle hotkey (e.g. Win+Space).
+ *
+ * WH_GETMESSAGE cannot intercept Win+key because the shell processes
+ * them before messages reach the app queue.
+ *
+ * Only acts when the foreground window belongs to the current process,
+ * preventing multiple LL hooks from conflicting across processes. */
 
-/* Track which keys have been remapped (for correct keyup handling).
- * Index = original VK, value = remapped VK (0 = not remapped). */
 static BYTE s_llRemappedKeys[256];
+static BOOL s_toggleKeyDown = FALSE;
+
+static BOOL IsModifierOnlyVk(UINT vk)
+{
+    return vk == VK_LWIN || vk == VK_RWIN ||
+           vk == VK_CONTROL || vk == VK_LCONTROL || vk == VK_RCONTROL ||
+           vk == VK_SHIFT || vk == VK_LSHIFT || vk == VK_RSHIFT ||
+           vk == VK_MENU || vk == VK_LMENU || vk == VK_RMENU;
+}
 
 LRESULT CALLBACK KolemakLowLevelKeyboardProc(int nCode, WPARAM wParam,
                                               LPARAM lParam)
 {
-    if (nCode == HC_ACTION) {
-        KBDLLHOOKSTRUCT *kb = (KBDLLHOOKSTRUCT *)lParam;
+    KBDLLHOOKSTRUCT *kb;
+    UINT vk;
 
-        /* Skip events we injected ourselves */
-        if (kb->dwExtraInfo == KOLEMAK_LL_INJECTED)
-            return CallNextHookEx(NULL, nCode, wParam, lParam);
+    if (nCode != HC_ACTION)
+        return CallNextHookEx(NULL, nCode, wParam, lParam);
 
-        if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
-            TextService *ts = (TextService *)TlsGetValue(g_tlsIndex);
-            if (ts && ts->colemakMode && ts->winKeyRemap) {
-                BOOL winHeld =
-                    (GetAsyncKeyState(VK_LWIN) & 0x8000) != 0 ||
-                    (GetAsyncKeyState(VK_RWIN) & 0x8000) != 0;
+    kb = (KBDLLHOOKSTRUCT *)lParam;
 
-                if (winHeld) {
-                    UINT vk = kb->vkCode;
-                    UINT remapped = keymap_get_colemak_vk(vk);
+    /* Skip events we injected ourselves */
+    if (kb->dwExtraInfo == KOLEMAK_LL_INJECTED)
+        return CallNextHookEx(NULL, nCode, wParam, lParam);
 
-                    if (remapped != vk && vk < 256) {
-                        INPUT input = {0};
-                        s_llRemappedKeys[vk] = (BYTE)remapped;
-                        input.type = INPUT_KEYBOARD;
-                        input.ki.wVk = (WORD)remapped;
-                        input.ki.wScan =
-                            (WORD)MapVirtualKey(remapped, MAPVK_VK_TO_VSC);
-                        input.ki.dwExtraInfo = KOLEMAK_LL_INJECTED;
-                        SendInput(1, &input, sizeof(INPUT));
-                        return 1;  /* Block original key */
+    vk = kb->vkCode;
+
+    if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
+        BOOL winHeld =
+            (GetAsyncKeyState(VK_LWIN) & 0x8000) != 0 ||
+            (GetAsyncKeyState(VK_RWIN) & 0x8000) != 0;
+
+        if (winHeld && !IsModifierOnlyVk(vk)) {
+            /* Forward Win+key to settings dialog when capturing hotkey */
+            if (g_captureHwnd && IsWindow(g_captureHwnd)) {
+                UINT mod = KOLEMAK_MOD_WIN;
+                if (GetAsyncKeyState(VK_CONTROL) & 0x8000)
+                    mod |= TF_MOD_CONTROL;
+                if (GetAsyncKeyState(VK_SHIFT) & 0x8000)
+                    mod |= TF_MOD_SHIFT;
+                if (GetAsyncKeyState(VK_MENU) & 0x8000)
+                    mod |= TF_MOD_ALT;
+                PostMessageW(g_captureHwnd, WM_APP,
+                             (WPARAM)vk, (LPARAM)mod);
+                return 1;
+            }
+
+            /* Only act when foreground window is in this process */
+            {
+                HWND fg = GetForegroundWindow();
+                DWORD fgPid = 0;
+                GetWindowThreadProcessId(fg, &fgPid);
+                if (fgPid != GetCurrentProcessId())
+                    return CallNextHookEx(NULL, nCode, wParam, lParam);
+            }
+
+            {
+                TextService *ts =
+                    (TextService *)TlsGetValue(g_tlsIndex);
+                if (ts) {
+                    /* Win-modifier toggle hotkey (e.g. Win+Space) */
+                    if (!s_toggleKeyDown &&
+                        (ts->hotkeyModifiers & KOLEMAK_MOD_WIN))
+                    {
+                        UINT mods = KOLEMAK_MOD_WIN;
+                        if (GetAsyncKeyState(VK_CONTROL) & 0x8000)
+                            mods |= TF_MOD_CONTROL;
+                        if (GetAsyncKeyState(VK_SHIFT) & 0x8000)
+                            mods |= TF_MOD_SHIFT;
+                        if (GetAsyncKeyState(VK_MENU) & 0x8000)
+                            mods |= TF_MOD_ALT;
+
+                        if (vk == ts->hotkeyVk &&
+                            mods == ts->hotkeyModifiers)
+                        {
+                            s_toggleKeyDown = TRUE;
+                            FlushAndToggleColemak(ts);
+                            return 1;
+                        }
+                    }
+
+                    /* Win+alpha Colemak remap */
+                    if (ts->colemakMode && ts->winKeyRemap) {
+                        UINT remapped = keymap_get_colemak_vk(vk);
+                        if (remapped != vk && vk < 256) {
+                            INPUT input = {0};
+                            s_llRemappedKeys[vk] = (BYTE)remapped;
+                            input.type = INPUT_KEYBOARD;
+                            input.ki.wVk = (WORD)remapped;
+                            input.ki.wScan = (WORD)MapVirtualKey(
+                                remapped, MAPVK_VK_TO_VSC);
+                            input.ki.dwExtraInfo =
+                                KOLEMAK_LL_INJECTED;
+                            SendInput(1, &input, sizeof(INPUT));
+                            return 1;
+                        }
                     }
                 }
             }
         }
-        else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP) {
-            UINT vk = kb->vkCode;
+    }
+    else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP) {
+        /* Reset toggle key tracking */
+        {
+            TextService *ts =
+                (TextService *)TlsGetValue(g_tlsIndex);
+            if (ts && vk == ts->hotkeyVk)
+                s_toggleKeyDown = FALSE;
+        }
 
-            /* Release tracked remap regardless of current Win state */
-            if (vk < 256 && s_llRemappedKeys[vk]) {
-                UINT remapped = s_llRemappedKeys[vk];
-                INPUT input = {0};
-                s_llRemappedKeys[vk] = 0;
-                input.type = INPUT_KEYBOARD;
-                input.ki.wVk = (WORD)remapped;
-                input.ki.wScan =
-                    (WORD)MapVirtualKey(remapped, MAPVK_VK_TO_VSC);
-                input.ki.dwFlags = KEYEVENTF_KEYUP;
-                input.ki.dwExtraInfo = KOLEMAK_LL_INJECTED;
-                SendInput(1, &input, sizeof(INPUT));
-                return 1;
-            }
+        /* Release tracked remap regardless of current Win state */
+        if (vk < 256 && s_llRemappedKeys[vk]) {
+            UINT remapped = s_llRemappedKeys[vk];
+            INPUT input = {0};
+            s_llRemappedKeys[vk] = 0;
+            input.type = INPUT_KEYBOARD;
+            input.ki.wVk = (WORD)remapped;
+            input.ki.wScan =
+                (WORD)MapVirtualKey(remapped, MAPVK_VK_TO_VSC);
+            input.ki.dwFlags = KEYEVENTF_KEYUP;
+            input.ki.dwExtraInfo = KOLEMAK_LL_INJECTED;
+            SendInput(1, &input, sizeof(INPUT));
+            return 1;
         }
     }
+
     return CallNextHookEx(NULL, nCode, wParam, lParam);
 }
 
@@ -160,43 +267,12 @@ LRESULT CALLBACK KolemakGetMsgProc(int code, WPARAM wParam, LPARAM lParam)
                     if (GetKeyState(VK_SHIFT) & 0x8000) mods |= TF_MOD_SHIFT;
 
                     /* Handle Colemak toggle hotkey (physical key basis).
-                     * hotkeyVk stores the physical VK, so compare against
-                     * the raw (pre-remap) VK for consistent toggling
-                     * regardless of current Colemak/QWERTY mode. */
+                     * Win-modifier hotkeys are handled by the LL hook;
+                     * this path handles Ctrl/Alt/Shift-only hotkeys. */
                     if (!isRepeat &&
                         vk == ts->hotkeyVk &&
                         mods == ts->hotkeyModifiers) {
-                        if (ts->hangulCtx.state != HANGUL_STATE_EMPTY) {
-                            HangulResult result =
-                                hangul_ic_flush(&ts->hangulCtx);
-                            ITfDocumentMgr *docMgr = NULL;
-                            if (ts->threadMgr &&
-                                SUCCEEDED(ts->threadMgr->lpVtbl->GetFocus(
-                                    ts->threadMgr, &docMgr)) &&
-                                docMgr) {
-                                ITfContext *ctx = NULL;
-                                if (SUCCEEDED(docMgr->lpVtbl->GetTop(
-                                        docMgr, &ctx)) && ctx) {
-                                    EditSession *es = NULL;
-                                    HRESULT hr = EditSession_Create(ts, ctx,
-                                        ES_HANDLE_RESULT, &es);
-                                    if (SUCCEEDED(hr)) {
-                                        es->data.hangulResult = result;
-                                        RequestEditSession(ts, ctx,
-                                            ES_HANDLE_RESULT, es);
-                                        es->lpVtbl->Release(
-                                            (ITfEditSession *)es);
-                                    }
-                                    ctx->lpVtbl->Release(ctx);
-                                }
-                                docMgr->lpVtbl->Release(docMgr);
-                            }
-                        }
-                        ts->colemakMode = !ts->colemakMode;
-                        KolemakTooltip_Show(
-                            ts->colemakMode ? L"Colemak" : L"QWERTY");
-                        if (ts->langBarButton)
-                            LangBarButton_UpdateState(ts->langBarButton);
+                        FlushAndToggleColemak(ts);
                         msg->message = WM_NULL;
                         return CallNextHookEx(NULL, code, wParam, lParam);
                     }

@@ -56,6 +56,8 @@ static void FormatHotkey(UINT mod, UINT vk, WCHAR *buf, int bufLen)
     (void)bufLen;
     buf[0] = 0;
 
+    if (mod & KOLEMAK_MOD_WIN)
+        lstrcatW(buf, L"Win+");
     if (mod & TF_MOD_CONTROL)
         lstrcatW(buf, L"Ctrl+");
     if (mod & TF_MOD_ALT)
@@ -116,6 +118,27 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg,
 
     switch (msg) {
 
+    case WM_APP:
+        /* Win+key hotkey capture forwarded from LL hook */
+        if (sd->capturing) {
+            UINT vk = (UINT)wParam;
+            UINT mod = (UINT)lParam;
+            WCHAR buf[64];
+
+            /* Recover physical VK (LL hook sends raw VK, but if
+             * Colemak remap is active it may already be remapped) */
+            sd->capturedVk = vk;
+            sd->capturedMod = mod;
+            sd->capturing = FALSE;
+            g_captureHwnd = NULL;
+
+            FormatHotkey(mod, vk, buf, 64);
+            SetWindowTextW(sd->lblHotkeyVal, buf);
+            SetWindowTextW(sd->btnHotkey,
+                L"\xBCC0\xACBD...");  /* 변경... */
+        }
+        return 0;
+
     case WM_KEYDOWN:
     case WM_SYSKEYDOWN:
         if (sd->capturing) {
@@ -125,6 +148,7 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg,
                 /* Cancel capture */
                 WCHAR buf[64];
                 sd->capturing = FALSE;
+                g_captureHwnd = NULL;
                 SetWindowTextW(sd->btnHotkey,
                     L"\xBCC0\xACBD...");  /* 변경... */
                 FormatHotkey(
@@ -149,7 +173,7 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg,
                 if (GetKeyState(VK_SHIFT) & 0x8000)   mod |= TF_MOD_SHIFT;
                 if (GetKeyState(VK_MENU) & 0x8000)    mod |= TF_MOD_ALT;
 
-                /* Must have at least one modifier */
+                /* Must have at least one modifier (Win handled via WM_APP) */
                 if (mod == 0) return 0;
 
                 /* Recover physical VK: the WH_GETMESSAGE hook may
@@ -158,6 +182,7 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg,
                     ? keymap_get_qwerty_vk(vk) : vk;
                 sd->capturedMod = mod;
                 sd->capturing = FALSE;
+                g_captureHwnd = NULL;
 
                 FormatHotkey(mod, sd->capturedVk, buf, 64);
                 SetWindowTextW(sd->lblHotkeyVal, buf);
@@ -235,6 +260,7 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg,
             if (HIWORD(wParam) == BN_CLICKED) {
                 if (!sd->capturing) {
                     sd->capturing = TRUE;
+                    g_captureHwnd = hwnd;
                     SetWindowTextW(sd->lblHotkeyVal,
                         /* 조합키 + 키를 누르세요... */
                         L"\xC870\xD569\xD0A4 + \xD0A4\xB97C "
@@ -246,6 +272,7 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg,
                     /* Cancel capture */
                     WCHAR buf[64];
                     sd->capturing = FALSE;
+                    g_captureHwnd = NULL;
                     FormatHotkey(
                         sd->capturedVk ? sd->capturedMod
                                        : sd->ts->hotkeyModifiers,

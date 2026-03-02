@@ -272,7 +272,7 @@ static HRESULT STDMETHODCALLTYPE TS_ActivateEx(
     ts->semicolonSwap = TRUE;
     ts->winKeyRemap = TRUE;
     ts->hotkeyVk = VK_SPACE;
-    ts->hotkeyModifiers = TF_MOD_CONTROL;
+    ts->hotkeyModifiers = KOLEMAK_MOD_WIN;
     ts->composition = NULL;
     ts->langBarButton = NULL;
     ts->threadMgrSinkCookie = TF_INVALID_COOKIE;
