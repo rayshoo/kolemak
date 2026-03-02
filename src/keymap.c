@@ -160,6 +160,47 @@ UINT keymap_get_colemak_vk(UINT vk)
     return vk;
 }
 
+/* Reverse Colemak VK-to-VK mapping: Colemak VK -> QWERTY (physical) VK */
+static const BYTE g_qwerty_vk_map[26] = {
+    'A',  /* A -> A */
+    'B',  /* B -> B */
+    'C',  /* C -> C */
+    'G',  /* D -> G */
+    'K',  /* E -> K */
+    'E',  /* F -> E */
+    'T',  /* G -> T */
+    'H',  /* H -> H */
+    'L',  /* I -> L */
+    'Y',  /* J -> Y */
+    'N',  /* K -> N */
+    'U',  /* L -> U */
+    'M',  /* M -> M */
+    'J',  /* N -> J */
+    0,    /* O -> VK_OEM_1 (handled separately) */
+    'R',  /* P -> R */
+    'Q',  /* Q -> Q */
+    'S',  /* R -> S */
+    'D',  /* S -> D */
+    'F',  /* T -> F */
+    'I',  /* U -> I */
+    'V',  /* V -> V */
+    'W',  /* W -> W */
+    'X',  /* X -> X */
+    'O',  /* Y -> O */
+    'Z',  /* Z -> Z */
+};
+
+UINT keymap_get_qwerty_vk(UINT colemak_vk)
+{
+    if (colemak_vk >= 'A' && colemak_vk <= 'Z') {
+        BYTE mapped = g_qwerty_vk_map[colemak_vk - 'A'];
+        return mapped ? (UINT)mapped : (UINT)VK_OEM_1;
+    }
+    if (colemak_vk == VK_OEM_1)
+        return 'P';
+    return colemak_vk;
+}
+
 BOOL keymap_get_colemak(UINT vk, BOOL shift, WCHAR *ch)
 {
     int i;
