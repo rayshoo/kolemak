@@ -77,6 +77,9 @@ struct TextService {
     /* Per-thread message hook for Colemak modifier+key remapping */
     HHOOK           msgHook;
 
+    /* Low-level keyboard hook for Win+key Colemak remapping */
+    HHOOK           llKeyboardHook;
+
     /* Language bar */
     struct LangBarButton *langBarButton;
 };
@@ -107,6 +110,12 @@ void TextService_SetKeyboardOpen(TextService *ts, BOOL open);
 
 /* WH_GETMESSAGE hook for modifier+key Colemak remapping */
 LRESULT CALLBACK KolemakGetMsgProc(int code, WPARAM wParam, LPARAM lParam);
+
+/* WH_KEYBOARD_LL hook for Win+key Colemak remapping (shell shortcuts) */
+LRESULT CALLBACK KolemakLowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam);
+
+/* Marker for events injected by the LL keyboard hook */
+#define KOLEMAK_LL_INJECTED 0x4B4F4C45UL  /* "KOLE" */
 
 /* ===== Edit session ===== */
 
