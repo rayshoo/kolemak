@@ -81,8 +81,10 @@ static BOOL ShouldEatKey(TextService *ts, UINT vk, BOOL shift)
                      (GetKeyState(VK_RWIN) & 0x8000)) != 0;
         if (ctrl || alt || win) {
             if (ts->colemakMode) {
-                if (ts->colemakRemapVk == vk)
+                if (ts->colemakRemapVk == vk) {
+                    ts->colemakRemapVk = 0;
                     return FALSE;  /* Our remapped key coming back */
+                }
                 if (keymap_get_colemak_vk(vk) != vk)
                     return TRUE;   /* Needs VK remapping */
             }
@@ -634,7 +636,10 @@ static HRESULT STDMETHODCALLTYPE KES_OnPreservedKey(
         }
 
         ts->koreanMode = !ts->koreanMode;
-        TextService_SetKeyboardOpen(ts, ts->koreanMode);
+        /* Note: keyboard open/close compartment is NOT changed here.
+         * Keeping it always "closed" ensures TSF routes Ctrl+letter
+         * shortcuts through our key event sink for Colemak VK remapping.
+         * Korean input works regardless since we handle it internally. */
         if (ts->langBarButton)
             LangBarButton_UpdateState(ts->langBarButton);
         *pfEaten = TRUE;
