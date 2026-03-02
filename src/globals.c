@@ -37,6 +37,9 @@ LONG g_cRefDll = 0;
 /* TLS index for per-thread TextService pointer (used by WH_GETMESSAGE hook) */
 DWORD g_tlsIndex = TLS_OUT_OF_INDEXES;
 
+/* Settings dialog capture window (for Win+key hotkey capture via LL hook) */
+HWND g_captureHwnd = NULL;
+
 void TextService_AddRefDll(void)
 {
     InterlockedIncrement(&g_cRefDll);
