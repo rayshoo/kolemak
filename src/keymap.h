@@ -31,7 +31,4 @@ BOOL keymap_get_colemak(UINT vk, BOOL shift, WCHAR *ch);
  * Maps QWERTY VK to Colemak VK. Returns the same vk if no change needed. */
 UINT keymap_get_colemak_vk(UINT vk);
 
-/* Reverse of keymap_get_colemak_vk: maps Colemak VK back to QWERTY VK. */
-UINT keymap_get_qwerty_vk(UINT colemak_vk);
-
 #endif /* KEYMAP_H */

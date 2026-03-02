@@ -72,7 +72,7 @@ LRESULT CALLBACK KolemakGetMsgProc(int code, WPARAM wParam, LPARAM lParam)
         MSG *msg = (MSG *)lParam;
         if (msg->message == WM_KEYDOWN || msg->message == WM_SYSKEYDOWN) {
             TextService *ts = (TextService *)TlsGetValue(g_tlsIndex);
-            if (ts && ts->colemakMode) {
+            if (ts) {
                 BOOL ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
                 BOOL alt  = (GetKeyState(VK_MENU) & 0x8000) != 0;
                 BOOL win  = ((GetKeyState(VK_LWIN) & 0x8000) |
@@ -80,23 +80,63 @@ LRESULT CALLBACK KolemakGetMsgProc(int code, WPARAM wParam, LPARAM lParam)
                 if (ctrl || alt || win) {
                     UINT vk = (UINT)msg->wParam;
                     UINT mods = 0;
-                    UINT remapped;
+                    UINT effectiveVk;
+                    BOOL isRepeat = (msg->lParam >> 30) & 1;
 
-                    /* Build TF_MOD flags to check against toggle hotkey */
                     if (ctrl) mods |= TF_MOD_CONTROL;
                     if (alt)  mods |= TF_MOD_ALT;
                     if (GetKeyState(VK_SHIFT) & 0x8000) mods |= TF_MOD_SHIFT;
 
-                    /* Skip remapping for the Colemak toggle hotkey so
-                     * TSF's PreservedKey can match the physical VK. */
-                    if (vk == ts->hotkeyVk && mods == ts->hotkeyModifiers)
-                        goto done;
+                    /* Effective VK after Colemak remap (same as raw in QWERTY) */
+                    effectiveVk = ts->colemakMode
+                        ? keymap_get_colemak_vk(vk) : vk;
 
-                    remapped = keymap_get_colemak_vk(vk);
-                    if (remapped != vk) {
-                        UINT newScan = MapVirtualKey(remapped,
+                    /* Handle Colemak toggle hotkey directly in the hook.
+                     * TSF's PreservedKey doesn't see hook-modified wParam,
+                     * so we must handle the toggle here. */
+                    if (!isRepeat &&
+                        effectiveVk == ts->hotkeyVk &&
+                        mods == ts->hotkeyModifiers) {
+                        if (ts->hangulCtx.state != HANGUL_STATE_EMPTY) {
+                            HangulResult result =
+                                hangul_ic_flush(&ts->hangulCtx);
+                            ITfDocumentMgr *docMgr = NULL;
+                            if (ts->threadMgr &&
+                                SUCCEEDED(ts->threadMgr->lpVtbl->GetFocus(
+                                    ts->threadMgr, &docMgr)) &&
+                                docMgr) {
+                                ITfContext *ctx = NULL;
+                                if (SUCCEEDED(docMgr->lpVtbl->GetTop(
+                                        docMgr, &ctx)) && ctx) {
+                                    EditSession *es = NULL;
+                                    HRESULT hr = EditSession_Create(ts, ctx,
+                                        ES_HANDLE_RESULT, &es);
+                                    if (SUCCEEDED(hr)) {
+                                        es->data.hangulResult = result;
+                                        RequestEditSession(ts, ctx,
+                                            ES_HANDLE_RESULT, es);
+                                        es->lpVtbl->Release(
+                                            (ITfEditSession *)es);
+                                    }
+                                    ctx->lpVtbl->Release(ctx);
+                                }
+                                docMgr->lpVtbl->Release(docMgr);
+                            }
+                        }
+                        ts->colemakMode = !ts->colemakMode;
+                        KolemakTooltip_Show(
+                            ts->colemakMode ? L"Colemak" : L"QWERTY");
+                        if (ts->langBarButton)
+                            LangBarButton_UpdateState(ts->langBarButton);
+                        msg->message = WM_NULL;
+                        return CallNextHookEx(NULL, code, wParam, lParam);
+                    }
+
+                    /* Remap modifier+alpha for Colemak shortcuts */
+                    if (ts->colemakMode && effectiveVk != vk) {
+                        UINT newScan = MapVirtualKey(effectiveVk,
                                                      MAPVK_VK_TO_VSC);
-                        msg->wParam = remapped;
+                        msg->wParam = effectiveVk;
                         msg->lParam = (msg->lParam & ~(0xFFu << 16))
                                     | ((LPARAM)newScan << 16);
                     }
@@ -104,7 +144,6 @@ LRESULT CALLBACK KolemakGetMsgProc(int code, WPARAM wParam, LPARAM lParam)
             }
         }
     }
-done:
     return CallNextHookEx(NULL, code, wParam, lParam);
 }
 
