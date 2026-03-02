@@ -6,11 +6,12 @@ A Colemak keyboard layout input method for Windows with native Korean (Dubeolsik
 
 - **Native IME** — Directly integrated into the Windows input framework, aiming for compatibility on par with the default Windows Korean IME
 - **Colemak English + Dubeolsik Korean** — Toggle Korean/English with `Hangul key` or `Right Alt`
-- **Instant Colemak / QWERTY toggle** — Press `Ctrl+Space` to switch, convenient when sharing your machine with others
+- **Instant Colemak / QWERTY toggle** — Press `Win+Space` to switch (configurable in settings), convenient when sharing your machine with others
+- **Win+key Colemak remapping** — In Colemak mode, Windows shell shortcuts like `Win+E` (Explorer), `Win+R` (Run) follow the Colemak layout (can be disabled in settings)
 - **CapsLock as Backspace** — CapsLock acts as Backspace, `Shift+CapsLock` toggles actual CapsLock
 - **Language Bar integration** — Right-click menu in the taskbar language area for toggling Colemak mode and CapsLock settings
-- **System tray settings** — Right-click the tray icon to configure CapsLock behavior, ㅔ key position, and toggle hotkey
-- **Persistent settings** — CapsLock, ㅔ key position, and hotkey settings are saved to registry and persist across restarts (Colemak mode always starts as default)
+- **System tray settings** — Right-click the tray icon to configure CapsLock behavior, ㅔ key position, Win+key remapping, and toggle hotkey
+- **Persistent settings** — CapsLock, ㅔ key position, Win+key remapping, and hotkey settings are saved to registry and persist across restarts (Colemak mode always starts as default)
 
 ## Requirements
 
@@ -44,7 +45,15 @@ Press `Hangul key` or `Right Alt` to toggle between Korean and English input.
 
 ### Colemak / QWERTY Toggle
 
-Press <kbd>Ctrl</kbd>+<kbd>Space</kbd> to switch between Colemak and QWERTY layouts. The toggle hotkey can be changed in settings.
+Press <kbd>Win</kbd>+<kbd>Space</kbd> to switch between Colemak and QWERTY layouts. The toggle hotkey can be changed in settings.
+
+### Win+key Colemak Remapping
+
+In Colemak mode, Windows shell shortcuts follow the Colemak layout. For example, pressing `Win+K` (physical K position) executes `Win+E` (File Explorer) because Colemak maps K→E.
+
+In QWERTY mode, remapping is automatically disabled and shortcuts follow the standard QWERTY layout.
+
+> You can disable this feature by unchecking "Win+키 Colemak 리맵" in settings.
 
 ### CapsLock
 
@@ -63,7 +72,8 @@ Right-click the Kolemak icon in the system tray and select **Settings**.
 |---------|-------------|
 | CapsLock → Backspace | Use CapsLock as Backspace |
 | Move ㅔ key to ; position | See [ㅔ Key Position](#ㅔ-key-position) below |
-| Colemak/QWERTY toggle hotkey | Default: `Ctrl+Space` |
+| Win+key Colemak remap | Remap Win+alpha shortcuts to Colemak layout in Colemak mode |
+| Colemak/QWERTY toggle hotkey | Default: `Win+Space` |
 
 ## ㅔ Key Position
 
