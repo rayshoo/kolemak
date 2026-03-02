@@ -183,6 +183,24 @@ LRESULT CALLBACK KolemakLowLevelKeyboardProc(int nCode, WPARAM wParam,
                         {
                             s_toggleKeyDown = TRUE;
                             FlushAndToggleColemak(ts);
+
+                            /* Inject no-op key to prevent Start menu.
+                             * Blocking Win+Space causes Windows to
+                             * treat Win release as standalone press;
+                             * a dummy keypress clears that state. */
+                            {
+                                INPUT noop[2] = {{0}, {0}};
+                                noop[0].type = INPUT_KEYBOARD;
+                                noop[0].ki.wVk = 0xFF;
+                                noop[0].ki.dwExtraInfo =
+                                    KOLEMAK_LL_INJECTED;
+                                noop[1].type = INPUT_KEYBOARD;
+                                noop[1].ki.wVk = 0xFF;
+                                noop[1].ki.dwFlags = KEYEVENTF_KEYUP;
+                                noop[1].ki.dwExtraInfo =
+                                    KOLEMAK_LL_INJECTED;
+                                SendInput(2, noop, sizeof(INPUT));
+                            }
                             return 1;
                         }
                     }
