@@ -76,9 +76,14 @@ BOOL WINAPI DllMain(HINSTANCE hInstDll, DWORD dwReason, LPVOID lpReserved)
     switch (dwReason) {
     case DLL_PROCESS_ATTACH:
         g_hInst = hInstDll;
+        g_tlsIndex = TlsAlloc();
         DisableThreadLibraryCalls(hInstDll);
         break;
     case DLL_PROCESS_DETACH:
+        if (g_tlsIndex != TLS_OUT_OF_INDEXES) {
+            TlsFree(g_tlsIndex);
+            g_tlsIndex = TLS_OUT_OF_INDEXES;
+        }
         break;
     }
     return TRUE;

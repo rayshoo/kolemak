@@ -29,6 +29,7 @@ extern const GUID  GUID_KolemakDisplayAttribute;
 /* ===== Global state ===== */
 extern HINSTANCE g_hInst;
 extern LONG      g_cRefDll;
+extern DWORD     g_tlsIndex;
 
 /* IME display name */
 #define KOLEMAK_DESC      L"Kolemak IME"
@@ -73,6 +74,9 @@ struct TextService {
     UINT            hotkeyVk;
     UINT            hotkeyModifiers;
 
+    /* Per-thread message hook for Colemak modifier+key remapping */
+    HHOOK           msgHook;
+
     /* Language bar */
     struct LangBarButton *langBarButton;
 };
@@ -100,6 +104,9 @@ HRESULT TextService_Create(IClassFactory *pFactory, IUnknown *pOuter, REFIID rii
 void TextService_AddRefDll(void);
 void TextService_ReleaseDll(void);
 void TextService_SetKeyboardOpen(TextService *ts, BOOL open);
+
+/* WH_GETMESSAGE hook for modifier+key Colemak remapping */
+LRESULT CALLBACK KolemakGetMsgProc(int code, WPARAM wParam, LPARAM lParam);
 
 /* ===== Edit session ===== */
 
