@@ -181,6 +181,31 @@ LRESULT CALLBACK KolemakLowLevelKeyboardProc(int nCode, WPARAM wParam,
                 TextService *ts =
                     (TextService *)TlsGetValue(g_tlsIndex);
                 if (ts) {
+                    /* Refresh colemakMode from registry.
+                     * The LL hook runs per-process but colemakMode may
+                     * have been toggled in a different process.  Reading
+                     * the registry here (only on Win+key, not every
+                     * keystroke) ensures the latest state is used. */
+                    {
+                        HKEY hKey;
+                        DWORD val, type, size = sizeof(DWORD);
+                        if (RegOpenKeyExW(HKEY_CURRENT_USER,
+                                          KOLEMAK_REG_KEY,
+                                          0, KEY_READ, &hKey)
+                            == ERROR_SUCCESS)
+                        {
+                            if (RegQueryValueExW(
+                                    hKey, KOLEMAK_REG_COLEMAK_MODE,
+                                    NULL, &type, (BYTE *)&val,
+                                    &size) == ERROR_SUCCESS
+                                && type == REG_DWORD)
+                            {
+                                ts->colemakMode = (val != 0);
+                            }
+                            RegCloseKey(hKey);
+                        }
+                    }
+
                     /* Win-modifier toggle hotkey (e.g. Win+Space) */
                     if (!s_toggleKeyDown &&
                         (ts->hotkeyModifiers & KOLEMAK_MOD_WIN))
