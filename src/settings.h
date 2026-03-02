@@ -15,5 +15,6 @@
 #define KOLEMAK_REG_HOTKEY_VK        L"HotkeyVk"
 #define KOLEMAK_REG_HOTKEY_MOD       L"HotkeyModifiers"
 #define KOLEMAK_REG_CAPSLOCK_STATE   L"CapsLockState"
+#define KOLEMAK_REG_WINKEY_REMAP    L"WinKeyRemap"
 
 #endif /* SETTINGS_H */

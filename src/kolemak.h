@@ -77,7 +77,8 @@ struct TextService {
     /* Per-thread message hook for Colemak modifier+key remapping */
     HHOOK           msgHook;
 
-    /* Low-level keyboard hook for Win+key Colemak remapping */
+    /* Win+key Colemak remapping */
+    BOOL            winKeyRemap;       /* TRUE = remap Win+alpha in Colemak mode */
     HHOOK           llKeyboardHook;
 
     /* Language bar */
