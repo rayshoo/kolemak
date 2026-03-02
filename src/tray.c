@@ -10,7 +10,6 @@
 #include <shellapi.h>
 #include "tray.h"
 #include "settings.h"
-#include "keymap.h"
 #include "resource.h"
 #include "version.h"
 
@@ -148,15 +147,11 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg,
                 /* Must have at least one modifier */
                 if (mod == 0) return 0;
 
-                /* The WH_GETMESSAGE hook may have already remapped
-                 * the VK (Colemak mode).  Reverse-map to get the
-                 * physical key so the hotkey works consistently. */
-                sd->capturedVk = sd->ts->colemakMode
-                    ? keymap_get_qwerty_vk(vk) : vk;
+                sd->capturedVk = vk;
                 sd->capturedMod = mod;
                 sd->capturing = FALSE;
 
-                FormatHotkey(mod, sd->capturedVk, buf, 64);
+                FormatHotkey(mod, vk, buf, 64);
                 SetWindowTextW(sd->lblHotkeyVal, buf);
                 SetWindowTextW(sd->btnHotkey,
                     L"\xBCC0\xACBD...");  /* 변경... */
