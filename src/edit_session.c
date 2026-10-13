@@ -179,10 +179,12 @@ static void ReinjectKey(UINT vk)
     inputs[0].type = INPUT_KEYBOARD;
     inputs[0].ki.wVk = (WORD)vk;
     inputs[0].ki.wScan = (WORD)MapVirtualKey(vk, MAPVK_VK_TO_VSC);
+    inputs[0].ki.dwExtraInfo = KOLEMAK_KEY_INJECTED;
     inputs[1].type = INPUT_KEYBOARD;
     inputs[1].ki.wVk = (WORD)vk;
     inputs[1].ki.wScan = (WORD)MapVirtualKey(vk, MAPVK_VK_TO_VSC);
     inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    inputs[1].ki.dwExtraInfo = KOLEMAK_KEY_INJECTED;
     SendInput(2, inputs, sizeof(INPUT));
 }
 
@@ -307,8 +309,12 @@ static HRESULT STDMETHODCALLTYPE ES_DoEditSession(
     }
     }
 
-    /* Re-inject key after edit session completes (for proper ordering) */
-    if (es->reinjectVk != 0)
+    /* Re-inject key after edit session completes (for proper ordering).
+     * Enter: skip when the immediate re-inject from KES_OnKeyDown has
+     * already been delivered after EndComposition — a second Enter
+     * would reach whatever got focus after the first one. */
+    if (es->reinjectVk != 0 &&
+        !(es->reinjectVk == VK_RETURN && ts->enterDelivered))
         ReinjectKey(es->reinjectVk);
 
     return hr;

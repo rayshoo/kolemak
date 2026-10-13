@@ -81,6 +81,11 @@ struct TextService {
     BOOL            winKeyRemap;       /* TRUE = remap Win+alpha in Colemak mode */
     HHOOK           llKeyboardHook;
 
+    /* Injected-Enter de-duplication (composition flush on Enter injects
+     * Enter twice: immediately and from the async edit session) */
+    BOOL            enterDelivered;    /* an injected Enter already reached the app after EndComposition */
+    UINT            enterEatKeyUp;     /* injected Enter keyups to swallow (paired with eaten keydowns) */
+
     /* Language bar */
     struct LangBarButton *langBarButton;
 };
@@ -117,6 +122,11 @@ LRESULT CALLBACK KolemakLowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lP
 
 /* Marker for events injected by the LL keyboard hook */
 #define KOLEMAK_LL_INJECTED 0x4B4F4C45UL  /* "KOLE" */
+
+/* Marker (dwExtraInfo) for keys re-injected by the IME after flushing a
+ * composition (Enter, navigation keys).  Read back via
+ * GetMessageExtraInfo() in KolemakGetMsgProc to de-duplicate Enter. */
+#define KOLEMAK_KEY_INJECTED 0x4B4F4C4BUL  /* "KOLK" */
 
 /* Win modifier flag for hotkey system (TF_MOD_* doesn't include Win) */
 #ifndef TF_MOD_WIN

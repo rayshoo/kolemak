@@ -130,3 +130,40 @@
 **결론**: 네이버(웹 콘텐츠)는 TSF 키 처리 중 즉시 SendInput이 필요하고,
 게임은 TSF 키 처리 밖(async 콜백)에서의 SendInput이 필요함.
 두 방식을 동시에 사용하여 모든 앱에서 동작 확인됨.
+
+---
+
+## 후속: 두 번째 Enter의 부작용 (2026-10-13 실측)
+
+"두 번째 Enter는 빈 입력 필드에 도착 → 무해" 가정이 브라우저에서 깨짐.
+
+- Chrome 페이지 textarea: 물리 Enter 1회 → `keydown Enter` 2회, 값 `"가\n\n"`
+- 주소창: 1번째 Enter로 검색 이동 시작 → Chrome이 포커스를 페이지로 돌려줌
+  → 2번째 Enter가 페이지의 **이전 포커스 요소(링크/버튼)를 활성화** → 검색
+  대신 그 링크로 이동 ("검색어가 검색되지 않고 엉뚱한 곳으로 이동")
+
+재현 방법: 테스트 HTML(textarea + 이벤트 로그 + 포커스용 버튼)을 로컬 HTTP로
+띄우고, 실제 마우스 클릭(SetCursorPos + mouse_event)으로 OS 포커스를 준 뒤
+PowerShell SendInput(dwExtraInfo 태그)으로 `HANGUL R K RETURN`을 넣고 로그 확인.
+(Playwright의 click은 OS 포커스를 바꾸지 못해 키가 주소창으로 들어감.
+Ctrl+L은 Colemak 리맵 때문에 물리 U키로 보내야 함.)
+
+### fix/browser-enter-misroute (검증 대기)
+- **방식**: 즉시 SendInput + async reinject는 유지하되, 두 Enter 모두
+  `dwExtraInfo = KOLEMAK_KEY_INJECTED` 태그를 붙이고 WH_GETMESSAGE 훅에서
+  `GetMessageExtraInfo()`로 식별.
+  - 조합 종료 후(`ts->composition == NULL`) 꺼낸 **첫** 주입 Enter만 전달,
+    두 번째는 `WM_NULL`로 삭제 (keyup도 짝 맞춰 삭제)
+  - 조합이 아직 살아 있을 때 꺼낸 주입 Enter는 지금처럼 그대로 통과
+    (게임은 이걸 무시하고 async 쪽을 처리한다는 기존 관찰 유지)
+  - async 콜백은 즉시 Enter가 이미 전달됐으면 재주입 생략
+- **브라우저 주소창**: ?
+- **네이버 검색 바**: ?
+- **카카오톡 채팅**: ?
+- **게임 채팅**: ?
+- **추가 확인**: 메모장/VS Code에서 한글 조합 중 Enter 시 줄바꿈이 1개인지
+
+같은 브랜치의 영문 모드 수정(알파벳을 WH_GETMESSAGE 훅에서 제자리 리맵)도
+함께 확인: 영문 Colemak 모드에서 빠르게 `단어+Enter` 입력 시 마지막 글자가
+다음 줄로 넘어가지 않는지, CapsLock/Shift 대소문자, `;`↔`o`/`p`↔`;` 매핑,
+Ctrl+알파벳 단축키, 전환 핫키, 설정 다이얼로그 핫키 캡처.

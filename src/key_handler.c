@@ -370,6 +370,40 @@ LRESULT CALLBACK KolemakGetMsgProc(int code, WPARAM wParam, LPARAM lParam)
                 if (alt)  mods |= TF_MOD_ALT;
                 if (GetKeyState(VK_SHIFT) & 0x8000) mods |= TF_MOD_SHIFT;
 
+                /* Injected-Enter de-duplication (see the Enter handling
+                 * in KES_OnKeyDown).  Both the immediate re-inject and
+                 * the async edit session re-inject carry
+                 * KOLEMAK_KEY_INJECTED.  Only the first one retrieved
+                 * AFTER the composition has ended is delivered; the
+                 * other is turned into WM_NULL.  Without this the second
+                 * Enter reached whatever got focus after the first one
+                 * (e.g. a link on the page after a browser address-bar
+                 * search, navigating away from the search).
+                 *
+                 * An injected Enter retrieved while the composition is
+                 * still active is passed through unmarked: apps that
+                 * need Enter after EndComposition (games) ignore it and
+                 * rely on the later one. */
+                if (vk == VK_RETURN &&
+                    (ULONG_PTR)GetMessageExtraInfo() == KOLEMAK_KEY_INJECTED)
+                {
+                    if (msg->message == WM_KEYDOWN) {
+                        if (!ts->composition) {
+                            if (ts->enterDelivered) {
+                                msg->message = WM_NULL;
+                                ts->enterEatKeyUp++;
+                            } else {
+                                ts->enterDelivered = TRUE;
+                            }
+                        }
+                    } else if (msg->message == WM_KEYUP &&
+                               ts->enterEatKeyUp > 0) {
+                        msg->message = WM_NULL;
+                        ts->enterEatKeyUp--;
+                    }
+                    return CallNextHookEx(NULL, code, wParam, lParam);
+                }
+
                 if ((ctrl || alt || win) && isKeyDown) {
                     BOOL isRepeat = (msg->lParam >> 30) & 1;
 
@@ -756,14 +790,22 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
      *    callback that runs outside TSF's keystroke manager.  Games
      *    ignore the immediate SendInput but process this deferred one.
      *
-     * Apps that handle the immediate Enter (browsers, KakaoTalk) will
-     * see a second Enter from the async callback, but it arrives after
-     * the action (page navigated / message sent), hitting an empty
-     * input field — harmless. */
+     * Apps that handle the immediate Enter (browsers, KakaoTalk) would
+     * otherwise see a second Enter from the async callback.  That is
+     * NOT harmless: in a browser the first Enter navigates and moves
+     * focus back to the page, and the second Enter activates whatever
+     * element was focused there.  Both injected Enters are therefore
+     * tagged with KOLEMAK_KEY_INJECTED and de-duplicated in
+     * KolemakGetMsgProc; the async callback also skips its re-inject
+     * when the immediate one has already been delivered. */
     if (vk == VK_RETURN && ts->hangulCtx.state != HANGUL_STATE_EMPTY)
     {
         HangulResult result = hangul_ic_flush(&ts->hangulCtx);
         EditSession *es = NULL;
+
+        /* New Enter episode: nothing delivered yet */
+        ts->enterDelivered = FALSE;
+        ts->enterEatKeyUp = 0;
 
         hr = EditSession_Create(ts, pic, ES_HANDLE_RESULT, &es);
         if (SUCCEEDED(hr)) {
@@ -815,11 +857,13 @@ static HRESULT STDMETHODCALLTYPE KES_OnKeyDown(
             inputs[0].ki.wVk = VK_RETURN;
             inputs[0].ki.wScan =
                 (WORD)MapVirtualKey(VK_RETURN, MAPVK_VK_TO_VSC);
+            inputs[0].ki.dwExtraInfo = KOLEMAK_KEY_INJECTED;
             inputs[1].type = INPUT_KEYBOARD;
             inputs[1].ki.wVk = VK_RETURN;
             inputs[1].ki.wScan =
                 (WORD)MapVirtualKey(VK_RETURN, MAPVK_VK_TO_VSC);
             inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+            inputs[1].ki.dwExtraInfo = KOLEMAK_KEY_INJECTED;
             SendInput(2, inputs, sizeof(INPUT));
         }
 
