@@ -293,12 +293,56 @@ LRESULT CALLBACK KolemakLowLevelKeyboardProc(int nCode, WPARAM wParam,
     return CallNextHookEx(NULL, nCode, wParam, lParam);
 }
 
-/* ===== WH_GETMESSAGE hook for modifier+key Colemak VK remapping =====
+/* TRUE when plain (unmodified) letter keys in English Colemak mode are
+ * remapped in place by KolemakGetMsgProc instead of being eaten by TSF
+ * and re-injected via SendInput.  In-place remapping keeps the key in
+ * its original position in the input queue, so a quickly typed Enter
+ * (or any following key) can never overtake the remapped letter. */
+static BOOL HookRemapsPlainKeys(TextService *ts)
+{
+    return ts->msgHook != NULL && ts->colemakMode && !ts->koreanMode;
+}
+
+/* Rewrite a key message's VK and scan code in place */
+static void RemapKeyMessage(MSG *msg, UINT remapped)
+{
+    UINT newScan = MapVirtualKey(remapped, MAPVK_VK_TO_VSC);
+    msg->wParam = remapped;
+    msg->lParam = (msg->lParam & ~(0xFFu << 16))
+                | ((LPARAM)newScan << 16);
+}
+
+/* Make the thread's CapsLock toggle state follow the IME-managed
+ * capsLockOn so TranslateMessage produces the right case for letters
+ * remapped in place (CapsLock itself is remapped to F13 and handled
+ * by the IME, so the OS state is not otherwise kept in sync). */
+static void SyncThreadCapsLock(TextService *ts)
+{
+    BYTE ks[256];
+    BYTE want = ts->capsLockOn ? 1 : 0;
+
+    GetKeyboardState(ks);
+    if ((ks[VK_CAPITAL] & 1) != want) {
+        ks[VK_CAPITAL] = (BYTE)((ks[VK_CAPITAL] & ~1) | want);
+        SetKeyboardState(ks);
+    }
+}
+
+/* ===== WH_GETMESSAGE hook for Colemak VK remapping =====
  *
- * Remaps VK codes in WM_KEYDOWN/WM_SYSKEYDOWN messages BEFORE TSF's
- * keystroke manager processes them.  This ensures Colemak shortcuts
- * work correctly in Korean mode, where TSF may skip OnTestKeyDown
- * for Ctrl+letter combinations.
+ * Remaps VK codes in key messages BEFORE TSF's keystroke manager
+ * processes them.
+ *
+ * 1) Modifier+alpha (Ctrl/Alt): ensures Colemak shortcuts work
+ *    correctly in Korean mode, where TSF may skip OnTestKeyDown for
+ *    Ctrl+letter combinations.
+ *
+ * 2) Plain alpha / ';' in English Colemak mode: remapped in place so
+ *    the letter stays in its original queue position.  Eating the key
+ *    in TSF and re-injecting the Colemak character via SendInput put
+ *    the character at the END of the input queue, so a fast "letter,
+ *    Enter" sequence could deliver Enter before the letter (observed
+ *    in Chrome's address bar: only the first letters were searched).
  *
  * Win+key remapping is handled by WH_KEYBOARD_LL instead (see above),
  * because Win+key shell shortcuts are consumed before reaching the
@@ -307,22 +351,27 @@ LRESULT CALLBACK KolemakGetMsgProc(int code, WPARAM wParam, LPARAM lParam)
 {
     if (code == HC_ACTION && wParam == PM_REMOVE) {
         MSG *msg = (MSG *)lParam;
-        if (msg->message == WM_KEYDOWN || msg->message == WM_SYSKEYDOWN) {
+        BOOL isKeyDown = (msg->message == WM_KEYDOWN ||
+                          msg->message == WM_SYSKEYDOWN);
+        BOOL isKeyUp   = (msg->message == WM_KEYUP ||
+                          msg->message == WM_SYSKEYUP);
+        if (isKeyDown || isKeyUp) {
             TextService *ts = (TextService *)TlsGetValue(g_tlsIndex);
             if (ts) {
                 BOOL ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
                 BOOL alt  = (GetKeyState(VK_MENU) & 0x8000) != 0;
                 BOOL win  = ((GetKeyState(VK_LWIN) & 0x8000) |
                              (GetKeyState(VK_RWIN) & 0x8000)) != 0;
-                if (ctrl || alt || win) {
-                    UINT vk = (UINT)msg->wParam;
-                    UINT mods = 0;
-                    UINT remapped;
-                    BOOL isRepeat = (msg->lParam >> 30) & 1;
+                UINT vk = (UINT)msg->wParam;
+                UINT mods = 0;
+                UINT remapped;
 
-                    if (ctrl) mods |= TF_MOD_CONTROL;
-                    if (alt)  mods |= TF_MOD_ALT;
-                    if (GetKeyState(VK_SHIFT) & 0x8000) mods |= TF_MOD_SHIFT;
+                if (ctrl) mods |= TF_MOD_CONTROL;
+                if (alt)  mods |= TF_MOD_ALT;
+                if (GetKeyState(VK_SHIFT) & 0x8000) mods |= TF_MOD_SHIFT;
+
+                if ((ctrl || alt || win) && isKeyDown) {
+                    BOOL isRepeat = (msg->lParam >> 30) & 1;
 
                     /* Handle Colemak toggle hotkey (physical key basis).
                      * Win-modifier hotkeys are handled by the LL hook;
@@ -340,13 +389,27 @@ LRESULT CALLBACK KolemakGetMsgProc(int code, WPARAM wParam, LPARAM lParam)
                      * Win+key to avoid double-remapping. */
                     if (ts->colemakMode && !win) {
                         remapped = keymap_get_colemak_vk(vk);
-                        if (remapped != vk) {
-                            UINT newScan = MapVirtualKey(remapped,
-                                                         MAPVK_VK_TO_VSC);
-                            msg->wParam = remapped;
-                            msg->lParam = (msg->lParam & ~(0xFFu << 16))
-                                        | ((LPARAM)newScan << 16);
-                        }
+                        if (remapped != vk)
+                            RemapKeyMessage(msg, remapped);
+                    }
+                }
+                else if (!(ctrl || alt || win) &&
+                         !(msg->message == WM_SYSKEYDOWN ||
+                           msg->message == WM_SYSKEYUP) &&
+                         HookRemapsPlainKeys(ts) &&
+                         ((vk >= 'A' && vk <= 'Z') || vk == VK_OEM_1))
+                {
+                    /* Plain letter in English Colemak mode.
+                     * Leave the toggle hotkey (physical key basis) and
+                     * the settings dialog's hotkey capture untouched. */
+                    BOOL isHotkey = (vk == ts->hotkeyVk &&
+                                     mods == ts->hotkeyModifiers);
+                    if (!isHotkey && !g_captureHwnd) {
+                        if (isKeyDown)
+                            SyncThreadCapsLock(ts);
+                        remapped = keymap_get_colemak_vk(vk);
+                        if (remapped != vk)
+                            RemapKeyMessage(msg, remapped);
                     }
                 }
             }
@@ -383,6 +446,13 @@ static BOOL ShouldEatKey(TextService *ts, UINT vk, BOOL shift)
 
     /* QWERTY mode with no Korean: pass everything through */
     if (!ts->colemakMode && !ts->koreanMode)
+        return FALSE;
+
+    /* English Colemak mode with the message hook active: letters and ';'
+     * were already remapped in place by KolemakGetMsgProc, so let them
+     * through untouched (see HookRemapsPlainKeys). */
+    if (HookRemapsPlainKeys(ts) &&
+        ((vk >= 'A' && vk <= 'Z') || vk == VK_OEM_1))
         return FALSE;
 
     /* Always eat letter keys (for Colemak remap or Korean input) */
@@ -484,6 +554,12 @@ static HRESULT HandleEnglishKey(TextService *ts, ITfContext *ctx,
     INPUT inputs[2] = {0};
 
     (void)ctx;
+
+    /* Message hook already remapped the key in place (English mode);
+     * nothing to inject.  SendInput here would append the character
+     * to the end of the input queue, behind any key already waiting. */
+    if (HookRemapsPlainKeys(ts))
+        return S_FALSE;
 
     /* CapsLock inverts case for letter keys.
      * Include VK_OEM_1 (;) since Colemak maps it to O. */
